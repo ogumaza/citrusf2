@@ -1,0 +1,42 @@
+# Google preset with Allman braces, four-space indents and a 120-column limit.
+# Access specifiers and case labels align with their class/switch; case blocks
+# are indented. Keep functions on multiple lines, align adjacent trailing
+# comments with at least one space before them, and always close namespaces
+# with a comment.
+BasedOnStyle: Google
+IndentWidth: 4
+AccessModifierOffset: -4
+ColumnLimit: 120
+IndentCaseLabels: false
+IndentCaseBlocks: true
+SpacesBeforeTrailingComments: 1
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+ShortNamespaceLines: 0
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterExternBlock: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: true
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+AllowShortFunctionsOnASingleLine: None
+AllowShortEnumsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+DerivePointerAlignment: false
+PointerAlignment: Left
+InsertBraces: true
+EmptyLineBeforeAccessModifier: Always

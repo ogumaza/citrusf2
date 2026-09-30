@@ -1,0 +1,10 @@
+/build/
+/build-*/
+/out/
+/cmake-build-*/
+*_citrusf2/
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/

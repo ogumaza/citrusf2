@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64 (GCC)
+            os: ubuntu-24.04
+          - name: Linux x64 (Clang)
+            os: ubuntu-24.04
+            cmake: -DCMAKE_CXX_COMPILER=clang++
+          - name: Windows x64 (MSVC)
+            os: windows-2025
+            cmake: -A x64
+            artifact: citrusf2-windows-x64
+          - name: macOS ARM64 (Apple Clang)
+            os: macos-15
+          - name: macOS x64 (Apple Clang)
+            os: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build ${{ matrix.cmake }}
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure --parallel 4
+      - name: Upload the Windows executable
+        if: matrix.artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/Release/citrusf2.exe
