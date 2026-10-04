@@ -732,6 +732,12 @@ private:
     // True if every open track is blocked on endless notes and no sweep, volume, pan or bend can change.
     bool Steady() const;
 
+    // Returns the time to end the performance at if the main loop, which started at tick `start`, holds a sound
+    // unchanged: a pass longer than kHoldSeconds that has changed nothing for longer than that, while sounding only
+    // endless notes, each the newest on an open track with tie or mono on. The next pass usually continues them, so the
+    // sound holds forever, and ends kHoldSeconds after the last change, as with Steady.
+    std::optional<double> HeldSoundEnd(uint32_t start) const;
+
     const SoundInfo& sound_;
     const Sequence& seq_;
     BankSet& banks_;
@@ -756,6 +762,7 @@ private:
     uint64_t rng_frame_ = 0;  // sound frames the random generator has been advanced for
     uint64_t next_frame_ = 0; // first sound frame with pending channel updates
     bool stop_ = false;
+    std::optional<double> held_sound_end_ms_; // set when the main loop holds a sound (HeldSoundEnd)
     double level_scale_ = 1.0;
     double level_peak_ = 0.0;
     std::array<bool, 16> filter_controller_{};
@@ -1044,8 +1051,16 @@ void Performer::StopNote(int t, Note& n)
 
 void Performer::CloseTrack(int t)
 {
-    // SequenceTrack::Close (0x31e240) releases every channel, even one that ignores note-off.
+    // SequenceTrack::Close (0x31e240) first gives the channels the track's settings, as at the end of a tick, so the
+    // release tails start from the closing tick's volume, pan, pitch and filter. It then releases every channel, even
+    // one that ignores note-off.
     Track& tr = tracks_[t];
+    if (TrackBusy(t))
+    {
+        UpdateOutputs(t);
+        level_peak_ = std::max(level_peak_, TrackLevel(t) * tr.legato_gain);
+    }
+
     for (Note& n : tr.notes)
     {
         ReleaseNote(t, n);
@@ -2074,7 +2089,67 @@ void Performer::OnLoop(int t, uint32_t target)
     if (out_.loops >= options_.loops && now_ms_ >= kMinLoopSeconds * 1000.0)
     {
         stop_ = true;
+        held_sound_end_ms_ = HeldSoundEnd(start);
     }
+}
+
+std::optional<double> Performer::HeldSoundEnd(uint32_t start) const
+{
+    if (now_ms_ - tick_ms_[start] <= kHoldSeconds * 1000.0)
+    {
+        return std::nullopt;
+    }
+
+    // Find the last change: the last MIDI event or tempo change.
+    uint32_t last = 0;
+    for (const std::vector<TrackEvent>& events : out_.tracks)
+    {
+        if (!events.empty())
+        {
+            last = std::max(last, events.back().tick);
+        }
+    }
+    if (!out_.tempo.empty())
+    {
+        last = std::max(last, out_.tempo.back().tick);
+    }
+    if (now_ms_ - tick_ms_[last] <= kHoldSeconds * 1000.0)
+    {
+        return std::nullopt;
+    }
+
+    // Every sounding note must be endless, unreleased and the newest note of an open track with tie or mono on.
+    bool sounding = false;
+    for (const Track& tr : tracks_)
+    {
+        for (const Note& n : tr.detached)
+        {
+            if (n.EndMs() > now_ms_)
+            {
+                return std::nullopt;
+            }
+        }
+        for (std::size_t k = 0; k < tr.notes.size(); k++)
+        {
+            const Note& n = tr.notes[k];
+            if (n.EndMs() <= now_ms_)
+            {
+                continue;
+            }
+            if (!tr.open || !(tr.tie || tr.mono) || n.released || n.EndMs() < kNever || k + 1 != tr.notes.size())
+            {
+                return std::nullopt;
+            }
+
+            sounding = true;
+        }
+    }
+    if (!sounding)
+    {
+        return std::nullopt;
+    }
+
+    return tick_ms_[last] + kHoldSeconds * 1000.0;
 }
 
 bool Performer::Parse(int t)
@@ -2454,9 +2529,17 @@ Performance Performer::Run()
             break;
         }
 
+        // A sequence that has been silent for longer than kHoldSeconds at the time limit ends with its last sound, as
+        // if it had finished.
         if (now_ms_ >= kMaxSeconds * 1000.0)
         {
-            out_.truncated = true;
+            bool sounding = false;
+            for (int t = 0; t < 16; t++)
+            {
+                sounding = sounding || OthersSounding(t, nullptr);
+            }
+            finished = !sounding && now_ms_ - sound_end_ms_ > kHoldSeconds * 1000.0;
+            out_.truncated = !finished;
             break;
         }
 
@@ -2547,6 +2630,17 @@ void Performer::PlayOutStopped()
 
 void Performer::EndPerformance(bool finished)
 {
+    // A main loop that holds a sound ends kHoldSeconds after its last change, without loop markers. Nothing changed in
+    // the ticks after that.
+    if (held_sound_end_ms_)
+    {
+        tick_ = std::min(MsToTick(*held_sound_end_ms_), tick_);
+        now_ms_ = tick_ms_[tick_];
+        out_.holds = true;
+        out_.loop.reset();
+        out_.loops = 0;
+    }
+
     // Stop immediately at a loop boundary, time limit or held-sound limit. A naturally finished sequence ends with its
     // final sound, including release tails; nw::snd can leave finished tracks waiting long after silence. Continue
     // one-shot waves with their per-frame pitch.

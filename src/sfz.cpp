@@ -377,12 +377,13 @@ std::string TrackFile(const Performance& perf, int t, int bend_range, BankSet& b
     s += Curve(kPanCurve, "CC10 to pan", [](int v) { return (v - 64) / 64.0; });
     if (low_pass)
     {
+        const auto cutoff = [](int v)
+        {
+            const int index = TrackFilters(0x40 - v, 0, 0).low_pass;
+            return index < 0 ? 0.0 : SfzLowPassCutoff(index) / static_cast<double>(kCutoffSpan);
+        };
         s += Curve(kLowPassCurve, "Low-pass cutoff by controller value: units of 12000 cents relative to 20 kHz",
-                   [](int v)
-                   {
-                       const int index = TrackFilters(0x40 - v, 0, 0).low_pass;
-                       return index < 0 ? 0.0 : SfzLowPassCutoff(index) / static_cast<double>(kCutoffSpan);
-                   });
+                   cutoff);
     }
     if (biquad != 0)
     {

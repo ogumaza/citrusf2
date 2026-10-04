@@ -69,6 +69,7 @@ on summarize(fileName, theLines)
 	set summary to ""
 	set lastMessage to ""
 	set outDir to ""
+	set isTruncated to false
 	repeat with ln in theLines
 		set ln to contents of ln
 		set lastMessage to ln
@@ -76,12 +77,15 @@ on summarize(fileName, theLines)
 		if ln starts with (fileName & ": ") and ln contains " sequences -> " then
 			set outDir to textAfter(ln, " sequences -> ")
 		end if
+		-- A truncated archive converts only what's left of it, which the counts don't show.
+		if ln starts with ("warning: " & fileName & " is truncated") then set isTruncated to true
 		-- The final "done:" line gives the conversion counts.
 		if ln starts with "done: " then set summary to fileName & ": " & (text 7 thru -1 of ln)
 	end repeat
 
 	-- If conversion failed before the summary, use the last error line.
 	if summary is "" then set summary to lastMessage
+	if isTruncated then set summary to summary & " (the archive is truncated, so some sounds are missing or silent)"
 	return {summary, outDir}
 end summarize
 

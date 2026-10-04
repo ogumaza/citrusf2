@@ -58,6 +58,10 @@ constexpr float kAttackTable[128] = {
 // initial envelope delay would fit the start better, but FluidSynth delays sample playback too.
 constexpr double kAttackRamp = 0.55;
 
+// SoundFont's slowest decay or release, 8000 timecents, in milliseconds for a 100 dB fall. MML values 0 to 2 are
+// slower.
+constexpr double kSlowestSf2DecayMs = 101593.6673259648;
+
 // Attack ends above -0.003 dB. The value is in 0.1 dB units.
 constexpr float kAttackEnd = -0.03125f;
 
@@ -308,11 +312,17 @@ Sf2Envelope ConvertEnvelope(const EnvelopeValues& v)
     Sf2Envelope e;
     const double attack_ms = v.attack < 127 ? AttackMs(v.attack) * kEnvTimeScale : 0.0;
     e.attack = ToTimecents(attack_ms * kAttackRamp, -12000, 8000);
-    const double hold_ms = HoldMs(v.hold) * kEnvTimeScale + attack_ms * (1.0 - kAttackRamp);
-    e.hold = ToTimecents(hold_ms, -12000, 5000);
 
-    // SoundFont decay and release times specify a 100 dB fall, linear in dB.
-    e.decay = ToTimecents(1000.0 / DecayRate(v.decay) * kEnvTimeScale, -12000, 8000);
+    // SoundFont decay and release times specify a 100 dB fall, linear in dB. A decay slower than SoundFont allows gets
+    // a longer hold, as far as SoundFont allows that, so that it reaches the sustain level when the game's does.
+    const double decay_ms = 1000.0 / DecayRate(v.decay) * kEnvTimeScale;
+    double hold_ms = HoldMs(v.hold) * kEnvTimeScale + attack_ms * (1.0 - kAttackRamp);
+    if (decay_ms > kSlowestSf2DecayMs)
+    {
+        hold_ms += -SustainCentibels(v.sustain) / 1000.0 * (decay_ms - kSlowestSf2DecayMs);
+    }
+    e.hold = ToTimecents(hold_ms, -12000, 5000);
+    e.decay = ToTimecents(decay_ms, -12000, 8000);
     e.sustain = std::clamp(-SustainCentibels(v.sustain), 0, 1440);
     e.release = ToTimecents(1000.0 / DecayRate(v.release) * kEnvTimeScale, -12000, 8000);
 

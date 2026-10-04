@@ -74,9 +74,13 @@ The performer follows Pokémon X's nw::snd player as reconstructed by 3SF, inclu
   commands and passes without waits, such as random retries or variable polling, are not loops.
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
-Indefinitely held sounds are capped at 10 seconds. A sequence that finishes naturally ends with
-its last sound, including release. Tempo or timebase 0 stops sequence timing while notes keep
-playing; those notes finish normally, or use the same 10-second limit if held indefinitely.
+Indefinitely held sounds are capped at 10 seconds after their last change. That includes a main
+loop longer than 10 seconds that ends with more than 10 seconds of no change, while only
+endless notes held with tie or mono sound, since the game's next pass usually continues them. A
+sequence that finishes naturally ends with its last sound, including release. Performances stop
+after 15 minutes; one that has been silent for more than 10 seconds by then ends with its last
+sound too. Tempo or timebase 0 stops sequence timing while notes keep playing; those notes
+finish normally, or use the same 10-second limit if held indefinitely.
 
 ### MIDI
 
@@ -120,7 +124,10 @@ regions become zones with:
 - The region's sample, root key, tuning, linear volume and pan.
 - Envelope parameters after track overrides, timed in 5 ms steps per 4.89 ms sound frame.
   nw::snd's attack is exponential in decibels; the linear SoundFont attack is fitted to it at
-  0.55 of its duration.
+  0.55 of its duration. SoundFont decays and releases fall 100 dB in 101.6 s at the slowest,
+  and the game's slowest take up to six times as long. Such a decay gets a longer hold, up to
+  SoundFont's limit of 18 s, so that it reaches its sustain level when the game's does. Such a
+  release plays at SoundFont's slowest. The SFZ files keep the game's times.
 - Key groups mapped to exclusive classes.
 - Loops repeated as needed to meet SoundFont padding rules: 8 samples before, at least 32
   within, and 8 after. This preserves playback.
@@ -197,8 +204,7 @@ in MIDI, SoundFont or SFZ:
   using their own law. For example, a region at +0.38 on a hard-left track is 6.3 dB left in
   the game but 14 dB left in FluidSynth.
 - **Pan curves and modes.** citrusf2 always uses the default curve and dual mode. Other curves
-  and balance mode, which pans stereo channels together, are reported. None of the test
-  archive sounds requests them.
+  and balance mode, which pans stereo channels together, are reported.
 - **LFO settings.** Notes retain the speed, range, type and delay from note-on. The game can
   update these during playback. Depth changes work through CC1.
 - **SoundFont filters.** The two-pole low-pass closely matches the biquad low-pass. For the
@@ -228,6 +234,8 @@ SoundFont output follows the specification and targets FluidSynth. Player differ
   TinySoundFont uses a square-root law, giving a slightly narrower result.
 - **Envelopes.** Times follow the specification's 100 dB range. FluidSynth uses 96 dB, making
   decay 4% slower in decibels.
+- **Tremolo.** FluidSynth doesn't let a volume LFO raise a note above full level, so on a note
+  that sustains at full level a tremolo only dips. The game's swings as far up as down.
 - **Attenuation.** Like E-mu hardware, FluidSynth applies 0.4 of a zone's initial attenuation.
   The specification applies all of it. A region at volume 64 therefore plays 2.4 dB below one
   at 127 in FluidSynth, rather than 6 dB. Attenuation for regions above 127 is reduced the same
@@ -284,9 +292,9 @@ C++ formatting uses clang-format with the repository's `.clang-format`.
 - Group file lookup, malformed groups/tables, partial files, fallback to complete copies, and
   groups missing from truncated archives. Archive truncation is distinguished from invalid
   file offsets in otherwise complete archives.
-- Sequence start offsets and bank slots, loop detection, tie/mono and legato gain scaling,
-  unheard notes, one-shot completion, tick rounding, unusual arguments, stopped timing,
-  variable polling, loops without waits, voice limits and approximation reports.
+- Sequence start offsets and bank slots, loop detection, held loops, the time limit, tie/mono
+  and legato gain scaling, unheard notes, one-shot completion, tick rounding, unusual arguments,
+  stopped timing, variable polling, loops without waits, voice limits and approximation reports.
 - Envelope conversion, pitch ratios, LFO, pan, SoundFont/SFZ filters and loop unrolling.
 - SoundFont/MIDI output checked by independent readers, SFZ/WAV output and file naming.
 

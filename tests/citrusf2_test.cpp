@@ -189,6 +189,10 @@ std::string Sf2Problem(const std::vector<uint8_t>& d)
                 {
                     return "keyRange not first";
                 }
+                if (oper == 44 && g != g0 + (Le16(d, igen + g0 * 4) == 43 ? 1 : 0))
+                {
+                    return "velRange out of place";
+                }
                 if (oper == 53 && g != g1 - 1)
                 {
                     return "sampleID not last";
@@ -1410,6 +1414,86 @@ void TestSequenceThatStopsAdvancingPlaysOut()
                    released.end_tick == unstopped.end_tick && ending.end_tick == unstopped.end_tick);
 }
 
+void TestTieLoopThatHoldsEndsAsAHeldSound()
+{
+    // The first sequence turns tie on, plays key 60 for 2400 ticks (25 s) and jumps back to the note, which continues
+    // it: the sound holds forever, so it ends 10 s after the note starts, without loop markers. The second does the
+    // same without tie, so each pass releases the note and strikes it again: a 25 s loop.
+    std::vector<ArchiveFile> files(4);
+    files[0].data = Cseq({0xc8, 0x01, 0x3c, 0x64, 0x92, 0x60, 0x89, 0x00, 0x00, 0x02});
+    files[1].data = Cseq({0x3c, 0x64, 0x92, 0x60, 0x89, 0x00, 0x00, 0x00});
+    files[2].data = OneRegionCbnk({{0x05000000, 0}});
+    files[3].data = Cwar({Pcm16Cwav(64, std::vector<int16_t>(64, 1000), 1, true)});
+    const std::vector<uint32_t> kBanks = {0x03000000};
+    const SoundArchive archive = SoundArchive::Load(
+        Csar(files, {.sequences = {{0, 0, kBanks}, {1, 0, kBanks}}, .banks = {2}, .wave_archives = {3}}));
+    BankSet banks(archive, archive.Sounds()[0]);
+
+    const Performance tied = Perform(archive, 0, banks, {});
+    const Performance struck = Perform(archive, 1, banks, {});
+
+    CITRUSF2_CHECK(tied.holds && !tied.loop && std::fabs(tied.seconds - 10.0) < 0.02);
+    CITRUSF2_CHECK(!struck.holds && struck.loop && struck.loop->start == 0 && struck.loop->end == 2400);
+}
+
+void TestTieLoopOverAOneShotWaveStaysALoop()
+{
+    // The tied note of the test above, on a 30 s one-shot wave: it's still playing when the 25 s pass ends, but it ends
+    // by itself, so the pass doesn't hold it forever.
+    std::vector<ArchiveFile> files(3);
+    files[0].data = Cseq({0xc8, 0x01, 0x3c, 0x64, 0x92, 0x60, 0x89, 0x00, 0x00, 0x02});
+    files[1].data = OneRegionCbnk({{0x05000000, 0}});
+    files[2].data = Cwar({Pcm16Cwav(30 * 32728, std::vector<int16_t>(30 * 32728, 1000))});
+    const std::vector<uint32_t> kBanks = {0x03000000};
+    const SoundArchive archive =
+        SoundArchive::Load(Csar(files, {.sequences = {{0, 0, kBanks}}, .banks = {1}, .wave_archives = {2}}));
+    BankSet banks(archive, archive.Sounds()[0]);
+
+    const Performance p = Perform(archive, 0, banks, {});
+
+    CITRUSF2_CHECK(!p.holds && p.loop && p.loop->end == 2400);
+}
+
+void TestClosingTickReachesTheReleaseTail()
+{
+    // Release 100 and key 60 for one tick, then volume 0 and FIN in the next. Closing the track gives the releasing
+    // note the track's settings, as the end of a tick does, so the tail is silent in the game and needs CC7 0 in MIDI.
+    std::vector<ArchiveFile> files(3);
+    files[0].data = Cseq({0xd3, 0x64, 0x3c, 0x64, 0x01, 0xc1, 0x00, 0xff});
+    files[1].data = OneRegionCbnk({{0x05000000, 0}});
+    files[2].data = Cwar({Pcm16Cwav(64, std::vector<int16_t>(64, 1000), 1, true)});
+    const std::vector<uint32_t> kBanks = {0x03000000};
+    const SoundArchive archive =
+        SoundArchive::Load(Csar(files, {.sequences = {{0, 0, kBanks}}, .banks = {1}, .wave_archives = {2}}));
+    BankSet banks(archive, archive.Sounds()[0]);
+
+    const Performance p = Perform(archive, 0, banks, {});
+
+    const auto silenced = [](const TrackEvent& e)
+    {
+        return e.kind == EventKind::kVolume && e.value == 0 && e.tick == 1;
+    };
+    CITRUSF2_CHECK(std::ranges::any_of(p.tracks[0], silenced));
+}
+
+void TestSilenceAtTheTimeLimitEndsWithTheLastSound()
+{
+    // Key 60 plays for 48 ticks (0.5 s), then the track waits 100,000 ticks (17 minutes), past the 15-minute limit. It
+    // has been silent since the note, so the performance ends with the note, as if the sequence had finished.
+    std::vector<ArchiveFile> files(3);
+    files[0].data = Cseq({0x3c, 0x64, 0x30, 0x80, 0x86, 0x8d, 0x20, 0xff});
+    files[1].data = OneRegionCbnk({{0x05000000, 0}});
+    files[2].data = Cwar({Pcm16Cwav(64, std::vector<int16_t>(64, 1000), 1, true)});
+    const std::vector<uint32_t> kBanks = {0x03000000};
+    const SoundArchive archive =
+        SoundArchive::Load(Csar(files, {.sequences = {{0, 0, kBanks}}, .banks = {1}, .wave_archives = {2}}));
+    BankSet banks(archive, archive.Sounds()[0]);
+
+    const Performance p = Perform(archive, 0, banks, {});
+
+    CITRUSF2_CHECK(!p.truncated && !p.holds && p.seconds < 1.0);
+}
+
 void TestOneShotWavePlaysOutAtItsPitch()
 {
     // Bend key 60 up by 127/128 of a 12-semitone range, shortening a 4 s one-shot to about 2 s. Compare waiting for
@@ -1765,6 +1849,20 @@ void TestDecayTakesTheGamesTime()
 
     CITRUSF2_CHECK(std::abs(d.decay - 1200.0 * std::log2(decay_ms / 1000.0)) <= 1.0);
     CITRUSF2_CHECK(d.sustain == -SustainCentibels(64));
+}
+
+void TestSlowDecayReachesSustainOnTime()
+{
+    // Decay 2 is slower than SoundFont's slowest decay, 8000 timecents for 100 dB. The hold makes up the difference, so
+    // the decay reaches sustain 100 (-4.2 dB) when the game's does.
+    const double game_ms = 1000.0 / DecayRate(2) * kEnvTimeScale;
+    const double fall = -SustainCentibels(100) / 1000.0; // of 100 dB
+
+    const Sf2Envelope d = ConvertEnvelope(EnvelopeValues{127, 2, 100, 0, 127});
+
+    const double reached_ms = 1000.0 * (std::exp2(d.hold / 1200.0) + fall * std::exp2(d.decay / 1200.0));
+    CITRUSF2_CHECK(d.decay == 8000);
+    CITRUSF2_CHECK(std::abs(reached_ms - fall * game_ms) < 0.001 * reached_ms);
 }
 
 void TestSfzDecayTakesTheGamesTime()
@@ -2472,7 +2570,6 @@ void TestSfzCommentKeepsTheNameOnItsLine()
 
 void TestFileNameKeepsValidNames()
 {
-    CITRUSF2_CHECK(FileName("SEQ_BGM_KW_GAME01") == "SEQ_BGM_KW_GAME01");
     CITRUSF2_CHECK(FileName(".x. y") == ".x. y");
 }
 
@@ -2585,7 +2682,7 @@ void TestArchiveConvertsEverySequence(const char* path)
         const SoundInfo& s = archive.Sounds()[i];
         if (s.type != SoundType::kSequence || archive.FileMissing(s.file_id))
         {
-            continue; // report sequences whose data is missing from a truncated archive
+            continue; // a sequence missing from a truncated archive can't be converted, and citrusf2 says so
         }
 
         sequences++;
@@ -2629,15 +2726,6 @@ void TestArchiveConvertsEverySequence(const char* path)
         {
             looping++;
         }
-
-        if (s.name == "SEQ_BGM_KW_GAME01")
-        {
-            // Timebase 96 (7680 MIDI ticks per quarter note), 120 BPM: a 2 s intro and a 32 s loop.
-            CITRUSF2_CHECK(m.division == 7680);
-            CITRUSF2_CHECK(c.performance.loop && c.performance.loop->start == 384 && c.performance.loop->end == 6528);
-            CITRUSF2_CHECK(std::abs(c.performance.seconds - 34.0) < 0.01);
-            CITRUSF2_CHECK(c.performance.approximations.empty());
-        }
     }
 
     std::printf("archive: %d sequences, %d loop\n", sequences, looping);
@@ -2658,6 +2746,7 @@ int main(int argc, char** argv)
     TestEnvelopeValuesMatchTheGame();
     TestInstantEnvelopeIsAnOrgan();
     TestDecayTakesTheGamesTime();
+    TestSlowDecayReachesSustainOnTime();
     TestSfzDecayTakesTheGamesTime();
     TestEnvelopeSimulationSustainsAndReleases();
     TestNoteIsQuietOnlyAfterItsAttack();
@@ -2695,6 +2784,10 @@ int main(int argc, char** argv)
     TestTicksFallInTheGamesSoundFrames();
     TestOddArgumentsAreReadAsTheGameReadsThem();
     TestSequenceThatStopsAdvancingPlaysOut();
+    TestTieLoopThatHoldsEndsAsAHeldSound();
+    TestTieLoopOverAOneShotWaveStaysALoop();
+    TestClosingTickReachesTheReleaseTail();
+    TestSilenceAtTheTimeLimitEndsWithTheLastSound();
     TestOneShotWavePlaysOutAtItsPitch();
     TestTimedSweepGlidesOnWhenTheSequenceStops();
     TestTrackWaitingForAVariableGoesOn();

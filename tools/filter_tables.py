@@ -124,11 +124,11 @@ def cents(ratio):
 
 
 def table(ctype, name, comment, values, per_line=10):
-    """Format a C++ table with `per_line` values per line."""
+    """Format a C++ table with `per_line` values per line, followed by a blank line."""
     lines = [f"// {comment}", f"constexpr {ctype} {name}[{len(values)}] = {{"]
     for i in range(0, len(values), per_line):
         lines.append("    " + ", ".join(str(v) for v in values[i:i + per_line]) + ",")
-    lines.append("};")
+    lines.append("};\n")
     return "\n".join(lines)
 
 

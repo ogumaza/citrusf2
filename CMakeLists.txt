@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.20)
 # The version is citrusf2 --version's, and the one in the file properties of the Windows program and the Info.plist of
 # the macOS app. A release changes it here and adds its notes in docs/release-notes/.
-project(citrusf2 VERSION 1.0.0 LANGUAGES CXX)
+project(citrusf2 VERSION 1.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

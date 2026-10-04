@@ -442,6 +442,7 @@ int ConvertArchive(const std::string& path, const Options& options, const std::r
     const std::string name = Utf8(input.filename());
     const std::size_t file_size = bytes->size();
     const SoundArchive archive = SoundArchive::Load(std::move(*bytes));
+    // The macOS app looks for this warning to say that an archive is truncated.
     if (archive.Truncated())
     {
         std::fprintf(stderr, "warning: %s is truncated (%zu bytes): skipping sounds with missing data\n", name.c_str(),
