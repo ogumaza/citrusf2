@@ -55,7 +55,8 @@ std::string Hex(uint32_t item)
     return buf;
 }
 
-// Describe why file `file_id` has no data: it is missing from `archive` or extends past its end.
+// Describe why file `file_id` has no data. Either the file extends past the end of `archive`, or `archive` doesn't
+// store the file.
 std::string NoData(const SoundArchive& archive, uint32_t file_id)
 {
     if (!archive.FileMissing(file_id))
@@ -160,7 +161,6 @@ const Bank* BankSet::GetBank(int slot) const
 const std::string& BankSet::BankName(int slot) const
 {
     static const std::string kNone;
-
     return slot >= 0 && slot < 4 ? bank_names_[slot] : kNone;
 }
 
@@ -219,7 +219,7 @@ const Pcm* BankSet::GetWave(int slot, uint32_t wave_id_index)
         return it->second.get();
     }
 
-    // Load wave archives on first use. Cache failures too, so each error is reported once.
+    // Load wave archives on first use. Cache failures too. Each error is then reported once.
     const auto [war_index, wave_index] = *key;
     auto war_it = wave_archives_.find(war_index);
     if (war_it == wave_archives_.end())

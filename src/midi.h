@@ -30,10 +30,11 @@ struct MidiReport
 // the start of their sound frame (Performance::frame_ticks). SoundFont preset i uses CC0 = i / 128 and program = i %
 // 128. Fill `report` with allocation details and warnings.
 //
-// A MIDI channel supports one active note per key. Repeated strikes that overlap get extra channels (layers) with
-// matching controllers, up to the 16-channel limit. Allocate in track order, using channel 10 (index 9, General MIDI
-// drums) last. Synths use bank 128 for that channel regardless of bank select, so record its presets in `report` for
-// the SoundFont writer to copy there.
+// Each part of a track (TrackEvent::part) gets a channel of its own while channels last. A MIDI channel supports one
+// active note per key. Repeated strikes that overlap therefore get extra channels (layers) with matching controllers,
+// up to the 16-channel limit. Allocate in track order, and use channel 10 (index 9, General MIDI drums) last. Synths
+// use bank 128 for that channel regardless of bank select. Record its presets in `report` for the SoundFont writer to
+// copy there.
 std::vector<uint8_t> WriteMidi(const Performance& perf, const std::string& title, MidiReport& report);
 
 } // namespace citrusf2

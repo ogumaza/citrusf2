@@ -1,8 +1,10 @@
-# Google preset with Allman braces, four-space indents and a 120-column limit.
-# Access specifiers and case labels align with their class/switch; case blocks
-# are indented. Keep functions on multiple lines, align adjacent trailing
-# comments with at least one space before them, and always close namespaces
-# with a comment.
+# clang-format's Google preset with the stricter choices from the Google C++
+# Style Guide, plus some departures taken from common Allman practice: Allman
+# braces, 4-space indents, access specifiers and case labels flush with their
+# class or switch, case blocks indented under their label, no one-line
+# functions, one space before end-of-line comments (lined up when they end
+# consecutive lines), and a 120-column limit. Every namespace gets a closing
+# comment, however short it is.
 BasedOnStyle: Google
 IndentWidth: 4
 AccessModifierOffset: -4

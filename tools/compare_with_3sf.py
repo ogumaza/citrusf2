@@ -17,7 +17,9 @@ archive mode, running its model of the sequence player against the game's DSP fi
 Align the renders in two-second windows, tracking lag between windows so timing differences do not dominate
 sound comparisons. Analyse up to the MIDI duration in 2048-sample frames (62.6 ms). Ignore game frames more
 than 60 dB below the loudest frame and clamp quieter values to that floor. Skip renders peaking at 16 or
-fewer 16-bit sample steps, and MIDI files shorter than two overlapping analysis frames (94 ms).
+fewer 16-bit sample steps, and MIDI files shorter than two overlapping analysis frames (94 ms). Report the
+sounds that 3sfrip leaves out as silent in the game, such as those whose volume in the archive is 0, as
+silent rather than failed.
 
 Report fields:
 
@@ -34,8 +36,8 @@ Report fields:
 
 --timeline reports lag, relative level and octave-band differences each second, useful for finding missing
 filters. Both synths render at the DSP rate of 32728 Hz. At this rate FluidSynth's low-pass attenuates the
-16k band (11-16 kHz) more than at 44100 Hz, so filtered tracks may look darker here than they sound in a
-typical player. --json saves results for comparison between runs.
+16k band (11-16 kHz) more than at 44100 Hz. Filtered tracks may therefore look darker here than they sound
+in a typical player. --json saves results for comparison between runs.
 
 Requires Python 3, numpy, FluidSynth (or the sfizz library with --sfizz), plus 3sfrip and 3sfplay on PATH or
 in the directory supplied to --3sf. Supply the archive and DSP firmware locally; neither citrusf2 nor
@@ -59,7 +61,7 @@ from pathlib import Path
 try:
     import numpy as np
 except ImportError:
-    sys.exit("compare_with_3sf.py needs numpy (pip install numpy)")
+    sys.exit("compare_with_3sf.py requires numpy (pip install numpy)")
 
 RATE = 32728  # Hz; DSP and 3sfplay output rate
 FRAME = 2048  # samples in an analysis frame
@@ -96,12 +98,15 @@ def safe_name(label):
                    for b in label.encode("utf-8"))
 
 
-def run(args, what):
-    """Run a program and return stdout. On failure, raise RuntimeError with `what` and the program's output."""
+def run(args, what, stderr=None):
+    """Run a program and return stdout. On failure, raise RuntimeError with `what` and the program's output. Add
+    stderr's lines to the list `stderr` if one is given."""
     p = subprocess.run([str(a) for a in args], stdin=subprocess.DEVNULL, capture_output=True)
     if p.returncode != 0:
         message = (p.stderr or p.stdout).decode("utf-8", "replace").strip().splitlines()
         raise RuntimeError(f"{what} failed ({message[-1] if message else f'exit code {p.returncode}'})")
+    if stderr is not None:
+        stderr.extend(p.stderr.decode("utf-8", "replace").splitlines())
 
     return p.stdout.decode("utf-8", "replace")
 
@@ -219,7 +224,7 @@ def tick_seconds(division, tracks):
 
 
 def midi_seconds(path):
-    """Return MIDI duration in seconds, using the last track end and the file's tempo map."""
+    """Return MIDI duration in seconds from the last track end and the file's tempo map."""
     _, division, tracks = read_midi(path)
     return tick_seconds(division, tracks)(max((events[-1][0] for events in tracks if events), default=0))
 
@@ -251,7 +256,7 @@ class Sfizz:
     """Offline SFZ rendering through sfizz's C API (sfizz.h)."""
 
     BLOCK = 1024  # the most samples rendered at once
-    QUALITY = 2  # Hermite interpolation, which sfizz plays with
+    QUALITY = 2  # sfizz's default: Hermite interpolation
 
     def __init__(self, path):
         lib = ctypes.CDLL(str(path))
@@ -263,6 +268,7 @@ class Sfizz:
             "sfizz_set_sample_rate": (None, [synth, ctypes.c_float]),
             "sfizz_set_samples_per_block": (None, [synth, ctypes.c_int]),
             "sfizz_set_num_voices": (None, [synth, ctypes.c_int]),
+            "sfizz_set_volume": (None, [synth, ctypes.c_float]),
             "sfizz_set_sample_quality": (None, [synth, ctypes.c_int, ctypes.c_int]),
             "sfizz_enable_freewheeling": (None, [synth]),
             "sfizz_send_note_on": (None, [synth, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
@@ -287,6 +293,7 @@ class Sfizz:
             lib.sfizz_set_sample_rate(synth, RATE)
             lib.sfizz_set_samples_per_block(synth, self.BLOCK)
             lib.sfizz_set_num_voices(synth, 256)
+            lib.sfizz_set_volume(synth, 0.0)  # in dB, like FluidSynth's gain 1; sfizz starts at -7.35
             with quiet_output():  # suppress sfizz diagnostics
                 lib.sfizz_enable_freewheeling(synth)
                 lib.sfizz_set_sample_quality(synth, 1, self.QUALITY)  # 1: freewheeling
@@ -379,7 +386,7 @@ def loudness(x):
 
 def best_lag(a, b, start, stop, lags, last):
     """Find the lag in `lags` that best aligns `b` with `a[start:stop]`, or None if either curve is flat.
-    Repeated sounds can produce similar peaks; among peaks within TIE of the best, choose the one nearest
+    Repeated sounds can produce similar peaks; among peaks within TIE of the best, select the one nearest
     `last`."""
     stop = min(stop, len(a))
     x = a[start:stop]
@@ -466,7 +473,7 @@ def compare(ours, game, length, timeline):
     floor = level_b.max(initial=-200.0) - FLOOR_DB
     active = level_b > floor
     # Estimate drift from median lags at each end. Use at most five windows and at most a third of the total
-    # per end, reducing the effect of isolated bad matches.
+    # per end. That limits the effect of isolated bad matches.
     lag_ms = [1000.0 * lag * BLOCK / RATE for lag in lags]
     ends = max(1, min(5, len(lags) // 3))
     drift = float(np.median(lag_ms[-ends:]) - np.median(lag_ms[:ends]))
@@ -492,7 +499,7 @@ def compare(ours, game, length, timeline):
         "balance_db": float(np.abs(balance[active]).mean()),
     })
 
-    # Per-second lag and relative levels/bands, using only frames above the floor.
+    # Per-second lag and relative levels/bands from frames above the floor only.
     seconds = []
     if timeline:
         second_of = times.astype(int)
@@ -507,18 +514,21 @@ def compare(ours, game, length, timeline):
     return result, seconds
 
 
-def compare_sequence(name, index, args, tools, minis, work):
+def compare_sequence(name, index, args, tools, minis, silent, work):
     """Convert, render and compare one sequence. Return its name, metrics and timeline, or its name and a skip
-    reason."""
+    reason. `silent` holds the labels that 3sfrip left out as silent in the game."""
     folder = work / f"{index:05d}"
     try:
+        if safe_name(name) not in minis and name in silent:
+            return name, {"lag_ms": 0.0, "drift_ms": 0.0, "frames": 0, "seconds": 0.0,
+                          "skipped": "silent in the game: nothing"}, [], None
         if safe_name(name) not in minis:
             raise RuntimeError("3SF didn't rip it")
         mini = minis[safe_name(name)]
         if not mini:
             raise RuntimeError("another sound's 3SF file has the same name")
 
-        # Isolate each sequence in its own output directory.
+        # Give each sequence a separate output directory.
         run([args.citrusf2, args.archive, "--quiet", "--output", folder, "--only", f"^{ecma_escape(name)}$"],
             "citrusf2")
         midi, sf2 = next(folder.glob("*.mid")), next(folder.glob("*.sf2"))
@@ -579,7 +589,7 @@ def main():
     ap.add_argument("archive", type=Path, help="the sound archive (.bcsar)")
     ap.add_argument("--firmware", type=Path, required=True, help="a DSP firmware file, such as a game's dspaudio.cdc")
     ap.add_argument("--3sf", dest="threesf", type=Path, help="directory containing 3sfrip and 3sfplay (default: search PATH)")
-    ap.add_argument("--only", help="sequence name regex, as accepted by citrusf2 --only")
+    ap.add_argument("--only", help="sequence name regex to pass to citrusf2 --only")
     ap.add_argument("--timeline", action="store_true", help="also compare each sequence second by second")
     ap.add_argument("--json", type=Path, help="write the results to this file")
     ap.add_argument("--keep", type=Path, help="keep the renders in this folder")
@@ -611,15 +621,18 @@ def main():
 
         # Rip a .3sflib and "<sound index> <label>.mini3sf" per sequence. Get durations from MIDI instead of 3sfrip.
         rip = work / "3sf"
+        notes = []
         run([tools["3sfrip"], args.archive, "--mode", "archive", "--firmware", args.firmware, "--no-length",
-             "--output", rip, *only], "3sfrip")
+             "--output", rip, *only], "3sfrip", notes)
+        silent = {m.group(1) for line in notes if (m := re.match(r"skipped (.+): it makes no sound", line))}
         minis = {}
         for f in rip.glob("*.mini3sf"):
             label = f.stem.split(" ", 1)[1]
             minis[label] = None if label in minis else f  # ambiguous file name shared by two sounds
 
         with concurrent.futures.ThreadPoolExecutor(max(1, args.jobs)) as pool:
-            jobs = [pool.submit(compare_sequence, name, i, args, tools, minis, work) for i, name in enumerate(names)]
+            jobs = [pool.submit(compare_sequence, name, i, args, tools, minis, silent, work)
+                    for i, name in enumerate(names)]
             for job in jobs:
                 name, result, timeline, error = job.result()
                 with OUTPUT:

@@ -24,6 +24,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -36,7 +37,7 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-// shellapi.h, for CommandLineToArgvW, needs windows.h first.
+// shellapi.h, for CommandLineToArgvW, requires windows.h first.
 #include <shellapi.h>
 #endif
 
@@ -72,6 +73,31 @@ std::string Utf8(const fs::path& p)
     return std::string(u.begin(), u.end());
 }
 
+// Parse a whole decimal integer or a hexadecimal one with a 0x prefix. A decimal integer may be negative.
+std::optional<int64_t> ParseInteger(std::string_view text)
+{
+    const bool negative = text.starts_with('-');
+    if (negative)
+    {
+        text.remove_prefix(1);
+    }
+    const bool hex = text.starts_with("0x") || text.starts_with("0X");
+    if (hex)
+    {
+        text.remove_prefix(2);
+    }
+
+    uint32_t n = 0;
+    const char* last = text.data() + text.size();
+    const auto [end, error] = std::from_chars(text.data(), last, n, hex ? 16 : 10);
+    if (text.empty() || error != std::errc{} || end != last)
+    {
+        return std::nullopt;
+    }
+
+    return negative ? -static_cast<int64_t>(n) : static_cast<int64_t>(n);
+}
+
 // Print usage and options.
 void Usage()
 {
@@ -92,13 +118,15 @@ void Usage()
         "  --loops N      repeat the main loop N times (default 1)\n"
         "                 MIDI loop markers are included for players that support them\n"
         "  --seed N       initial game PRNG state (default 0x12345678)\n"
+        "  --var N=V      set variable N (0-15 player, 16-31 global) to V before each\n"
+        "                 sequence starts; repeat for more variables\n"
         "  --list         list sequences without converting\n"
         "  --quiet        print errors only\n"
         "  --version      show the version\n");
 }
 
-// Parse arguments, stopping at --help or --version. Throw std::runtime_error for unknown options, missing values or
-// invalid values.
+// Parse arguments up to --help or --version. Throw std::runtime_error for unknown options, missing values or invalid
+// values.
 Options ParseOptions(const std::vector<std::string>& args)
 {
     Options o;
@@ -110,7 +138,7 @@ Options ParseOptions(const std::vector<std::string>& args)
         {
             if (i + 1 >= args.size())
             {
-                throw std::runtime_error(a + " needs a value");
+                throw std::runtime_error(a + " requires a value");
             }
 
             return args[++i];
@@ -126,7 +154,7 @@ Options ParseOptions(const std::vector<std::string>& args)
             const auto [end, error] = std::from_chars(v.data() + (hex ? 2 : 0), last, n, hex ? 16 : 10);
             if (error == std::errc::invalid_argument || end != last)
             {
-                throw std::runtime_error(a + " needs a number, not " + v);
+                throw std::runtime_error(a + " requires a number, not " + v);
             }
             if (error == std::errc::result_out_of_range || n > max)
             {
@@ -151,6 +179,26 @@ Options ParseOptions(const std::vector<std::string>& args)
         else if (a == "--seed")
         {
             o.perform.seed = number(std::numeric_limits<uint32_t>::max());
+        }
+        else if (a == "--var")
+        {
+            const std::string v = value();
+            const std::size_t equals = v.find('=');
+            const std::optional<int64_t> index =
+                equals == std::string::npos ? std::nullopt : ParseInteger(std::string_view(v).substr(0, equals));
+            const std::optional<int64_t> number =
+                equals == std::string::npos ? std::nullopt : ParseInteger(std::string_view(v).substr(equals + 1));
+            if (!index || !number)
+            {
+                throw std::runtime_error("--var requires N=V, not " + v);
+            }
+            if (*index < 0 || *index > 31 || *number < std::numeric_limits<int16_t>::min() ||
+                *number > std::numeric_limits<int16_t>::max())
+            {
+                throw std::runtime_error("--var " + v + " is out of range");
+            }
+
+            o.perform.variables[static_cast<uint8_t>(*index)] = static_cast<int16_t>(*number);
         }
         else if (a == "--list")
         {
@@ -183,7 +231,7 @@ Options ParseOptions(const std::vector<std::string>& args)
     return o;
 }
 
-// Read a file; return an empty vector if it cannot be opened.
+// Read a file. Return nothing if it can't be opened.
 std::optional<std::vector<uint8_t>> ReadFile(const fs::path& path)
 {
     std::ifstream f(path, std::ios::binary);
@@ -310,8 +358,8 @@ void UseUtf8Console()
 #endif
 }
 
-// Line-buffer stdout to keep it ordered with errors when both share a pipe, as in Citrusf2.app. The app runs only on
-// macOS; Windows' C runtime does not support line buffering.
+// Line-buffer stdout to keep it ordered with errors when both share a pipe. They share one in Citrusf2.app. The app
+// runs only on macOS; Windows' C runtime does not support line buffering.
 void LineBufferOutput()
 {
 #ifndef _WIN32
@@ -319,7 +367,7 @@ void LineBufferOutput()
 #endif
 }
 
-// Keep the console open after drag-and-drop or double-click launches on Windows, so the user can read the results.
+// Keep the console open after drag-and-drop or double-click launches on Windows. The user can then read the results.
 void PauseIfOwnConsole()
 {
 #ifdef _WIN32
@@ -445,8 +493,14 @@ int ConvertArchive(const std::string& path, const Options& options, const std::r
     // The macOS app looks for this warning to say that an archive is truncated.
     if (archive.Truncated())
     {
-        std::fprintf(stderr, "warning: %s is truncated (%zu bytes): skipping sounds with missing data\n", name.c_str(),
-                     file_size);
+        std::fprintf(stderr,
+                     "warning: %s is truncated (%zu bytes): sounds whose data is missing are skipped, and notes whose "
+                     "waves are missing are silent\n",
+                     name.c_str(), file_size);
+    }
+    if (archive.NamesDamaged())
+    {
+        std::fprintf(stderr, "warning: %s has a damaged name table: its sounds are named by number\n", name.c_str());
     }
     for (const std::string& group_error : archive.GroupErrors())
     {
@@ -477,9 +531,9 @@ int ConvertArchive(const std::string& path, const Options& options, const std::r
                                  ? input.parent_path() / PathFromUtf8(FileName(Utf8(input.stem()) + "_citrusf2"))
                                  : PathFromUtf8(options.output);
 
-    // Archive names differing only in extension produce the same output directory. Case differences can collide too,
-    // depending on the filesystem. Ask the filesystem whether the directory already belongs to an earlier archive
-    // before writing anything.
+    // Archive names differing only in extension produce the same output directory. Whether case differences collide too
+    // depends on the filesystem. Before writing anything, use the filesystem to check whether the directory already
+    // belongs to an earlier archive.
     for (const auto& [folder, earlier] : used_folders)
     {
         std::error_code ignored; // no existing directory to compare

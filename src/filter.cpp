@@ -17,8 +17,8 @@ namespace
 constexpr float kOneOver127 = 0x1.020408p-7f;
 
 // Best-fit SoundFont cutoffs in absolute cents, with no resonance, for kLpfFreq's first 23 entries (80-12800 Hz). Entry
-// 24 (16000 Hz) disables the filter. The game's one-pole filter falls at 6 dB/octave, half the SoundFont slope, so the
-// fitted cutoffs are well above the game's -3 dB points.
+// 24 (16000 Hz) disables the filter. The game's one-pole filter falls at 6 dB/octave, half the SoundFont slope. The
+// fitted cutoffs are therefore well above the game's -3 dB points.
 constexpr uint16_t kLowPassCutoff[23] = {
     5950,  6140,  6390,  6840,  7210,  7570,  7980,  8360,  8740,  9190,  9600,  10030,
     10530, 10850, 11120, 11410, 11660, 11900, 12130, 12310, 12470, 12590, 12670,
@@ -49,9 +49,9 @@ constexpr int16_t kSfzLowPassCutoff[23] = {
     -4727, -4347, -3969, -3555, -3188, -2832, -2455, -2138, -1852, -1589, -1418,
 };
 
-// Biquad coefficient sets converted to SFZ (see SfzBiquad), using cookbook filters with matching cutoff and Q at 32728
-// Hz. Gain is measured where the cookbook filter has unity gain: DC for low-pass, Nyquist for high-pass, centre
-// frequency for band-pass.
+// Biquad coefficient sets converted to SFZ (see SfzBiquad). Each set becomes a cookbook filter with matching cutoff and
+// Q at 32728 Hz. Gain is measured where the cookbook filter has unity gain: DC for low-pass, Nyquist for high-pass,
+// centre frequency for band-pass.
 // Type 1: low-pass.
 constexpr SfzBiquad kSfzBiquad1[112] = {
     {4811, -128, -50},  {4751, -127, -50},  {4691, -127, -50},  {4631, -127, -50},  {4570, -127, -50},

@@ -28,7 +28,7 @@ constexpr int kImaStep[89] = {7,     8,     9,     10,    11,    12,    13,    1
                               3660,  4026,  4428,  4871,  5358,  5894,  6484,  7132,  7845,  8630,  9493, 10442, 11487,
                               12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767};
 
-// Decodes IMA-ADPCM, low nibble first, starting from `sample` and step index `index`.
+// Decodes IMA-ADPCM, low nibble first, from `sample` and step index `index`.
 std::vector<int16_t> DecodeIma(std::span<const uint8_t> data, uint32_t samples, int16_t sample, uint8_t index)
 {
     std::vector<int16_t> out;
@@ -211,7 +211,7 @@ PreparedWave UnrollLoop(const Pcm& pcm, uint32_t min_start, uint32_t min_before,
         std::vector<int16_t> src = ch;
         if (src.empty())
         {
-            src.push_back(0); // a sample needs at least one point
+            src.push_back(0); // a sample requires at least one point
         }
 
         if (!pcm.loop)

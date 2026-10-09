@@ -20,7 +20,7 @@ public:
     // Set MML depth, speed and range, with delay in milliseconds.
     void Set(uint8_t depth, uint8_t speed, uint8_t range, uint32_t delay_ms);
 
-    // Advance by `msec` envelope milliseconds, consuming the delay first.
+    // Advance by `msec` envelope milliseconds. Use up the delay first.
     void Update(int msec);
 
     // Return depth / 128 * range * sine, in semitones for a pitch LFO.

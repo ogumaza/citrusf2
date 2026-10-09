@@ -20,7 +20,7 @@
 namespace citrusf2
 {
 
-// Effective key and velocity ranges for one velocity region. nw::snd chooses the first matching key region, then the
+// Effective key and velocity ranges for one velocity region. nw::snd selects the first matching key region, then the
 // first matching velocity region within it. Earlier entries can therefore mask part of a later region.
 struct PlayedRanges
 {
@@ -29,7 +29,7 @@ struct PlayedRanges
     std::vector<std::pair<int, int>> keys, velocities;
 };
 
-// Return effective ranges for `inst` in bank order, omitting velocity entries without a region.
+// Return effective ranges for `inst` in bank order. Leave out velocity entries without a region.
 std::vector<PlayedRanges> RegionRanges(const Instrument& inst);
 
 // A sequence's banks, with waves decoded on demand. Read failures are collected in Errors() and silence only the
@@ -40,7 +40,7 @@ public:
     BankSet(const SoundArchive& archive, const SoundInfo& sound);
 
     // Return the bank in `slot`, or nullptr. Only four slots exist. nw::snd accepts higher slots and reads past its
-    // bank table; those slots are silent here, as in 3SF's model.
+    // bank table. As in 3SF's model, those slots are silent here.
     const Bank* GetBank(int slot) const;
 
     // Return the bank name, BANK_<index> for unnamed banks, or an empty string for an empty slot.

@@ -3,8 +3,8 @@
 // SFZ instruments and WAV samples for a performance.
 //
 // Each sequence track gets one SFZ file containing its presets, selected by program change. SFZ players ignore MIDI
-// channels, so each file serves the matching MIDI track and its layers. MIDI controllers carry filter settings (see
-// filter.h). Output targets sfizz, which is also used for comparison with game renders.
+// channels. Each file therefore serves the matching MIDI track and its layers. Filter settings are sent on MIDI
+// controllers (see filter.h). Output targets sfizz. Comparisons with game renders use sfizz too.
 
 #pragma once
 
@@ -45,8 +45,8 @@ struct SfzInstruments
 // Shared sample directory, beside the sequence directories.
 inline const std::string kSfzSamplesFolder = "samples";
 
-// Build SFZ files for active tracks in `perf`, using bend ranges from `midi`. `title` and `preset_names` supply names
-// for comments.
+// Build SFZ files for active tracks in `perf` with bend ranges from `midi`. `title` and `preset_names` supply names for
+// comments.
 SfzInstruments BuildSfz(const Performance& perf, const MidiReport& midi, BankSet& banks, const std::string& title,
                         const std::vector<std::string>& preset_names);
 

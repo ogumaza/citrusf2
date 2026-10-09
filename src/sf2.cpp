@@ -58,7 +58,7 @@ struct Buffer
         data.insert(data.end(), b.begin(), b.end());
     }
 
-    // Write chunk ID, size and payload, adding a zero pad byte for odd payload sizes.
+    // Write the chunk's ID, size and payload. An odd payload size gets a zero pad byte.
     void Chunk(const char* id, const std::vector<uint8_t>& payload)
     {
         Fourcc(id);
@@ -181,8 +181,8 @@ Buffer InfoList(const SoundFont& sf)
     return info;
 }
 
-// Write sdta with 46 zero samples after each sample. Include padding even when there are no samples, since FluidSynth
-// rejects SoundFonts with empty sample data.
+// Write sdta with 46 zero samples after each sample. Include padding even when there are no samples. FluidSynth rejects
+// SoundFonts with empty sample data.
 Buffer SdtaList(const SoundFont& sf)
 {
     Buffer smpl;
@@ -254,7 +254,7 @@ Buffer PdtaList(const SoundFont& sf)
     inst.U16(static_cast<uint16_t>(iz.bag_count));
     iz.Terminate();
 
-    // Positions are sample offsets within smpl, matching the layout in SdtaList.
+    // Positions are sample offsets within smpl. They follow the layout in SdtaList.
     Buffer shdr;
     uint32_t start = 0;
     for (const Sample& s : sf.samples)

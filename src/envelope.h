@@ -43,7 +43,7 @@ struct EnvelopeValues
 // for an instant attack.
 float HeldLevel(const EnvelopeValues& v, int64_t frames);
 
-// Level after `frames` release updates, using the game's stepping. `level` is in 0.1 dB units; `rate` is the DecayRate
+// Level after `frames` release updates with the game's stepping. `level` is in 0.1 dB units; `rate` is the DecayRate
 // result, in 0.1 dB per envelope millisecond.
 float ReleasedLevel(float level, double rate, int64_t frames);
 
@@ -58,14 +58,21 @@ int64_t FramesToLevel(const EnvelopeValues& v, float level);
 // Treat sustain attenuation at or above this value as inaudible (centibels).
 constexpr int kInaudibleSustain = 400;
 
+// The attenuation in centibels down to which the MIDI note of a channel that its length can't release follows the
+// channel's fade. A loud note can still be heard at kInaudibleSustain.
+constexpr int kFadedAttenuation = 600;
+
 // SoundFont volume envelope generators (timecents; sustain in centibels of attenuation).
 struct Sf2Envelope
 {
     int attack = -12000, hold = -12000, decay = -12000, sustain = 0, release = -12000;
 };
 
-// Convert the game's envelope timing, fitting a linear SoundFont attack to its curve.
+// Convert the game's envelope timing. Fit a linear SoundFont attack to the game's attack curve.
 Sf2Envelope ConvertEnvelope(const EnvelopeValues& v);
+
+// The time the SoundFont and SFZ attacks take to reach full level, in milliseconds. Both rise linearly in amplitude.
+double Sf2AttackMs(const EnvelopeValues& v);
 
 // Convert milliseconds to SoundFont timecents, clamped to lo..hi. Times <= 1 ms return lo.
 int ToTimecents(double ms, int lo, int hi);
@@ -76,8 +83,8 @@ struct SfzEnvelope
     double attack = 0.0, hold = 0.0, decay = 0.0, sustain = 100.0, release = 0.0;
 };
 
-// Convert to sfizz's SFZ envelope, with the same attack fit as SoundFont. Decay and release are linear in dB, as in the
-// game, falling by a factor of e^-9 (78.17 dB) over their specified duration.
+// Convert to sfizz's SFZ envelope, with the same attack fit as SoundFont. As in the game, decay and release are linear
+// in dB. They fall by a factor of e^-9 (78.17 dB) over their specified duration.
 SfzEnvelope ConvertEnvelopeForSfz(const EnvelopeValues& v);
 
 } // namespace citrusf2

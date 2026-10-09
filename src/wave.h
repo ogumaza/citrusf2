@@ -26,8 +26,8 @@ struct Pcm
     std::vector<std::vector<int16_t>> channels;
 };
 
-// Decode the first two CWAV channels, as nw::snd does. Supports DSP-ADPCM, PCM8, PCM16 and IMA-ADPCM. Throw FormatError
-// on failure.
+// Like nw::snd, decode the first two CWAV channels. Supports DSP-ADPCM, PCM8, PCM16 and IMA-ADPCM. Throw FormatError on
+// failure.
 Pcm DecodeWave(std::span<const uint8_t> cwav);
 
 // Samples and loop bounds prepared for SoundFont or SFZ output.

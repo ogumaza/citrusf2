@@ -12,7 +12,7 @@
 // cutoff.
 //
 // SFZ supports all these filters: sfizz's lpf_1p matches the DSP one-pole; lpf_2p, hpf_2p and bpf_2p are cookbook
-// filters. Two MIDI controllers carry the track settings.
+// filters. The track settings are sent on two MIDI controllers.
 //
 // Generate filter.cpp's tables from the game code with tools/filter_tables.py.
 

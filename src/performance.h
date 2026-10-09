@@ -34,8 +34,8 @@ struct PresetKey
     // Track envelope overrides (0xff: none, the bank region's value applies).
     uint8_t attack = 0xff, decay = 0xff, sustain = 0xff, release = 0xff, hold = 0xff;
 
-    // Track LFO parameters in MML units; depth is carried separately by CC1. Pan LFO is supported by SFZ only. Other
-    // types have no effect in nw::snd. Negative delays prevent the LFO from starting, so those LFOs are omitted too.
+    // Track LFO parameters in MML units; depth is sent separately on CC1. Pan LFO is supported by SFZ only. Other types
+    // have no effect in nw::snd. Negative delays prevent the LFO from starting. Those LFOs are omitted too.
     uint8_t lfo_type = 0; // 0 pitch, 1 volume, 2 pan, 3 none
     uint8_t lfo_range = 1;
     uint8_t lfo_speed = 16; // Hz = speed * 100 / 256 (in envelope time, see envelope.h)
@@ -47,6 +47,11 @@ struct PresetKey
     // This loses the biquad low-pass's slight resonance.
     SoundFontFilter filter;
     bool filter_controller = false;
+
+    // The attack, in timecents, of a note that the game releases during its attack. The SoundFont and SFZ attacks rise
+    // linearly in amplitude. The game's attack rises exponentially in dB. This attack reaches the game's level when the
+    // note is released, and the release starts from that level. Unset for other notes.
+    std::optional<int16_t> attack_timecents;
 };
 
 // Apply the track envelope overrides in `key` to `env`.
@@ -63,8 +68,8 @@ enum class EventKind : uint8_t
     kPan,        // value: 0-127, 64 centre (CC10)
     kPitch,      // semitones: pitch bend plus sweep/portamento
     kModulation, // value: LFO depth / 2 (CC1)
-    kReverb,     // value: effect send A (CC91)
-    kChorus,     // value: effect send B (CC93)
+    kReverb,     // value: reverb send (CC91), 0 (effect send A reaches no effect)
+    kChorus,     // value: chorus send (CC93), 0 (effect send B reaches no effect)
     kSoundOff,   // cut every sound on the channel at once (CC120)
     kFilter,     // value: the filter's cutoff (kFilterController, see filter.h)
     kSfzLowPass, // value: the low-pass setting for the SFZ files (kSfzLowPassController)
@@ -72,6 +77,16 @@ enum class EventKind : uint8_t
 };
 
 // An event on a track's timeline.
+//
+// MIDI has one set of controllers per channel. Each of nw::snd's channels keeps its settings. Notes that the game plays
+// with other settings than the track's later notes therefore go on another part of the track. Release tails that the
+// track has detached are such notes. The MIDI writer gives each part another channel. The track's changes go to the
+// part that its new notes go to; a note's events go to its part.
+//
+// An event belongs to the sound frame that its tick is processed in. A pitch that a timed sweep reaches in a frame
+// between ticks is the exception. That pitch comes `after` the tick by the fraction of a tick at which the frame
+// starts. A pitch reached in a frame after the last tick comes as many ticks after that tick as the frame starts, at
+// the last tempo.
 struct TrackEvent
 {
     uint32_t tick = 0;
@@ -81,6 +96,8 @@ struct TrackEvent
     uint32_t preset = 0;
     float semitones = 0.0f;
     uint32_t note = 0; // NoteOn/NoteOff ID, starting at 1; distinguishes overlapping notes of the same key
+    uint8_t part = 0;  // the part of the track, 0 for its first
+    double after = 0;  // 0, between 0 and 1 for a frame between ticks, or more after the last tick
 };
 
 // Recorded sequence: tempo, track events, presets, main loop and duration.
@@ -107,8 +124,8 @@ struct Performance
     // Biquad type per track (1-5), or 0 for none. SFZ uses the first type each track enables.
     std::array<uint8_t, 16> biquad_types{};
 
-    // MIDI attenuation in dB. Game volumes reach 255, but CC11 stops at 127. Scale all CC11 values equally to fit,
-    // preserving track balance. SFZ adds this gain back.
+    // MIDI attenuation in dB. Game volumes reach 255, but CC11 stops at 127. Scale all CC11 values equally to fit. The
+    // tracks keep their balance. SFZ adds this gain back.
     double level_cut_db = 0.0;
 
     // Start of each tick's sound frame, expressed as a fractional tick. MIDI events are placed at these positions.
@@ -132,9 +149,14 @@ struct PerformOptions
     // Main loop repetitions, at least 1. The default plays the intro and one loop, with MIDI loop markers.
     int loops = 1;
 
-    // Initial nw::snd PRNG state. The game also advances it every sound frame, so its state depends on elapsed time.
-    // 0x12345678 is the startup value.
+    // Initial nw::snd PRNG state. 0x12345678 is the startup value. Like 3SF's model, the performer steps it 17 times
+    // before the sequence starts. The game also advances it every sound frame. The state therefore depends on elapsed
+    // time.
     uint32_t seed = 0x12345678;
+
+    // Values for player variables (0-15) and global variables (16-31), set before the sequence starts. Some sequences
+    // play nothing until the game sets one of their variables.
+    std::map<uint8_t, int16_t> variables;
 };
 
 // Perform sequence `sound_index` from `archive`. Throw FormatError for corrupt data.

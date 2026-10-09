@@ -2,14 +2,15 @@
 
 // Sequence conversion (see convert.h). This file builds the SoundFont; midi.cpp and sfz.cpp write the other formats.
 //
-// Each performance preset combines a bank instrument with its track settings. It becomes one SoundFont instrument and
-// preset, with a zone for each region. Zones carry the region's key and velocity ranges, sample, root key, tuning,
-// volume, pan, envelope, key group and loop. Track overrides apply to the envelope. Presets used by MIDI channel 10
-// also get a copy in bank 128, where synths look for drum instruments.
+// Each performance preset combines a bank instrument with its track settings. Each such preset becomes one SoundFont
+// instrument and preset, with a zone for each region. Zones contain the region's key and velocity ranges, sample, root
+// key, tuning, volume, pan, envelope, key group and loop. Track overrides apply to the envelope. Presets used by MIDI
+// channel 10 also get a copy in bank 128. Synths take drum instruments from that bank.
 
 #include "convert.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <iterator>
@@ -42,15 +43,15 @@ constexpr uint16_t kSrcFilterController = 0x0080 | kFilterController; // linear,
 // SoundFont bank for MIDI channel 10 (General MIDI drums). Synths use this bank regardless of bank select.
 constexpr uint16_t kChannel10Bank = 128;
 
-// Build the instrument's global zone. Disable the default velocity-to-filter modulator, which nw::snd doesn't use,
+// Build the instrument's global zone. nw::snd has no velocity-to-filter modulator. Disable the default one by
 // overriding both the SoundFont 2.01 and FluidSynth versions.
 //
-// CC1 carries LFO depth / 2. The resulting depth is MML depth / 128 times `range` semitones for pitch, or 6 * range dB
+// CC1 holds LFO depth / 2. The resulting depth is MML depth / 128 times `range` semitones for pitch, or 6 * range dB
 // for volume. When the LFO is omitted, disable the default CC1-to-vibrato modulator too.
 //
 // The default pitch wheel modulator uses 12700 cents times the bend range / 128. This makes a 7-semitone bend set
-// through RPN 0 about 5.5 cents flat. Replace it with a 12800-cent modulator targeting fineTune, as FluidSynth does, to
-// get the full bend range.
+// through RPN 0 about 5.5 cents flat. Like FluidSynth, replace it with a 12800-cent modulator targeting fineTune. The
+// bend then covers the full range.
 //
 // Set the track filter here (see filter.h). If it changes during a note, use a modulator driven by kFilterController
 // instead.
@@ -121,6 +122,10 @@ RegionGenerators ConvertRegion(const PresetKey& key, const VelocityRegion& r, bo
     RegionGenerators g;
     g.envelope = ConvertEnvelope(
         OverrideEnvelope({r.adshr.attack, r.adshr.decay, r.adshr.sustain, r.adshr.hold, r.adshr.release}, key));
+    if (key.attack_timecents)
+    {
+        g.envelope.attack = *key.attack_timecents;
+    }
 
     // Regions that ignore note-off get a MIDI note-off when nw::snd releases the channel, when they become inaudible,
     // or when the key is struck again (see performance.cpp). For the latter two, keep the decay going by using the
@@ -151,7 +156,7 @@ RegionGenerators ConvertRegion(const PresetKey& key, const VelocityRegion& r, bo
     return g;
 }
 
-// Build a zone for a key range and velocity range, using `sample` and the region's generators. `pan` uses nw::snd's -1
+// Build a zone for a key range and velocity range from `sample` and the region's generators. `pan` uses nw::snd's -1
 // (left) to 1 (right) range.
 sf2::Zone RegionZone(const RegionGenerators& g, const std::pair<int, int>& keys, const std::pair<int, int>& velocities,
                      double pan, uint16_t sample)
@@ -214,7 +219,8 @@ public:
     {
     }
 
-    // Add preset `index` at bank index / 128, program index % 128, using the bank instrument specified by `key`.
+    // Add preset `index` at bank index / 128, program index % 128. The preset uses the bank instrument specified by
+    // `key`.
     void Add(uint32_t index, const PresetKey& key, const std::string& name);
 
     // Copy a preset previously added by Add to bank 128 for MIDI channel 10. Keep its program number; warn if another
@@ -429,22 +435,23 @@ bool IsDeviceName(std::string stem)
     return std::find(std::begin(kDevices), std::end(kDevices), stem) != std::end(kDevices);
 }
 
-// Find the highest region volume used by `perf`. Match regions by preset, key and velocity, as the synth does.
+// Find the highest region volume used by `perf`. Like the synth, match regions by preset, key and velocity.
 int LoudestRegion(const Performance& perf, const BankSet& banks)
 {
     int loudest = 0;
     for (const std::vector<TrackEvent>& events : perf.tracks)
     {
-        const PresetKey* preset = nullptr;
+        std::array<const PresetKey*, 256> preset{}; // per part
         for (const TrackEvent& e : events)
         {
             if (e.kind == EventKind::kPreset)
             {
-                preset = &perf.presets[e.preset];
+                preset[e.part] = &perf.presets[e.preset];
             }
-            else if (e.kind == EventKind::kNoteOn && preset)
+            else if (e.kind == EventKind::kNoteOn && preset[e.part])
             {
-                const VelocityRegion* r = banks.FindRegion(preset->bank_slot, preset->program, e.key, e.value);
+                const VelocityRegion* r =
+                    banks.FindRegion(preset[e.part]->bank_slot, preset[e.part]->program, e.key, e.value);
                 loudest = std::max(loudest, r ? static_cast<int>(r->volume) : 0);
             }
         }

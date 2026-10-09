@@ -20,7 +20,7 @@ expressed in dB. Match the game's coefficients at 32728 Hz.
 SoundFont: FluidSynth supplies one cookbook low-pass (fluid_iir_filter.c), with Q = 10^((resonance / 10 -
 3.01) / 20). It matches the biquad low-pass. Approximate the one-pole by fitting cutoff at 44100 Hz against
 the game's response at 32728 Hz. Minimize RMS dB error relative to 20 Hz over 400 log-spaced frequencies
-from 20 Hz to 14 kHz, flooring both responses at -30 dB.
+from 20 Hz to 14 kHz. Floor both responses at -30 dB.
 
 Requires Python 3 and numpy.
 """
@@ -33,10 +33,10 @@ from pathlib import Path
 try:
     import numpy as np
 except ImportError:
-    sys.exit("filter_tables.py needs numpy (pip install numpy)")
+    sys.exit("filter_tables.py requires numpy (pip install numpy)")
 
 CODE_BASE = 0x100000  # code.bin's load address
-LPF_FREQ = 0x56e358  # kLpfFreq: 24 uint16 cutoffs in Hz, the last (16000) switching the filter off
+LPF_FREQ = 0x56e358  # kLpfFreq: 24 uint16 cutoffs in Hz. The last (16000) switches the filter off.
 COS_TABLE = 0x560ac0  # nn::math: 256 entries of sine, cosine and their differences to the next entry, as floats
 BIQUADS = {  # type: (address, sets, name)
     1: (0x574e7c, 112, "low-pass"),
@@ -60,7 +60,7 @@ def read(code, fmt, address):
 
 
 def one_pole(code, freq):
-    """Compute one-pole b0 and a1 in single precision, as nn::snd does. Obtain cos(2 pi freq / 32000) by linear
+    """Compute one-pole b0 and a1 in single precision as nn::snd does. Obtain cos(2 pi freq / 32000) by linear
     interpolation in nn::math's table (CosFIdx, 0x172d44). Then b = 2 - cos, c = sqrt(b^2 - 1) - b, b0 = (1
     + c) * 32768, a1 = -c * 32768. Truncate coefficients to integers."""
     x = f32(min(freq, 16000)) * f32(0.008)

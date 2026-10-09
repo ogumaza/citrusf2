@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <map>
 #include <string>
 #include <string_view>
@@ -22,6 +23,11 @@ namespace
 
 // A region table entry with no target. Notes in this region are silent.
 constexpr std::size_t kNoTarget = static_cast<std::size_t>(-1);
+
+// The upper bound of a direct velocity table. The game's lookup (code.bin 0x490a24) returns a direct table's region
+// without comparing the value. A note above velocity 127, through the velocity range command (0xb3) or a velocity byte
+// above 127, still plays that region.
+constexpr int kAnyVelocity = std::numeric_limits<int>::max();
 
 // Optional parameters: 32 flag bits followed by one 32-bit value per set bit.
 struct OptionParams
@@ -89,7 +95,7 @@ Blocks BlockTable(const Reader& r, const char* magic)
 }
 
 // Return a required block's offset and size as std::size_t. On 64-bit builds, derived offsets cannot wrap at 32 bits
-// and point back into the file. On 32-bit builds they can, so corrupt files may produce misleading errors.
+// and point back into the file. On 32-bit builds they can. Corrupt files may then produce misleading errors.
 std::pair<std::size_t, std::size_t> RequiredBlock(const Blocks& blocks, uint16_t type, const char* name)
 {
     const auto it = blocks.find(type);
@@ -149,8 +155,8 @@ VelocityRegion ReadVelocityRegion(const Reader& r, std::size_t p)
 }
 
 // Read a direct, range or index region table. Return each region's lower and upper bounds and its location, or
-// kNoTarget.
-std::vector<std::tuple<uint8_t, uint8_t, std::size_t>> ReadRegionTable(const Reader& r, std::size_t p)
+// kNoTarget. A direct table's one region reaches `direct_top`.
+std::vector<std::tuple<int, int, std::size_t>> ReadRegionTable(const Reader& r, std::size_t p, int direct_top)
 {
     const Reference ref = ReadRef(r, p);
     const std::size_t q = p + ref.offset;
@@ -166,11 +172,11 @@ std::vector<std::tuple<uint8_t, uint8_t, std::size_t>> ReadRegionTable(const Rea
         return base + t.offset;
     };
 
-    std::vector<std::tuple<uint8_t, uint8_t, std::size_t>> out;
+    std::vector<std::tuple<int, int, std::size_t>> out;
     switch (ref.type)
     {
     case 0x6000: // direct
-        out.emplace_back(uint8_t{0}, uint8_t{127}, target(q, q));
+        out.emplace_back(0, direct_top, target(q, q));
         break;
 
     case 0x6001: // range: count, upper keys, refs
@@ -192,7 +198,7 @@ std::vector<std::tuple<uint8_t, uint8_t, std::size_t>> ReadRegionTable(const Rea
             const uint8_t mn = r.U8(q), mx = r.U8(q + 1);
             for (int k = mn; k <= mx; k++)
             {
-                out.emplace_back(static_cast<uint8_t>(k), static_cast<uint8_t>(k), target(q + 4 + (k - mn) * 8, q));
+                out.emplace_back(k, k, target(q + 4 + (k - mn) * 8, q));
             }
             break;
         }
@@ -478,7 +484,7 @@ const VelocityRegion* Instrument::Find(int key, int velocity) const
             continue;
         }
 
-        // The first matching key region wins, even if none of its velocity ranges match.
+        // The first matching key region applies even if none of its velocity ranges match.
         for (const auto& v : k.velocities)
         {
             if (velocity >= v.lo && velocity <= v.hi)
@@ -533,15 +539,15 @@ Bank Bank::Parse(std::span<const uint8_t> file)
         }
 
         Instrument inst;
-        for (auto [lo, hi, key_off] : ReadRegionTable(r, inst_table + ref.offset))
+        for (auto [lo, hi, key_off] : ReadRegionTable(r, inst_table + ref.offset, 127))
         {
             KeyRegion k;
-            k.lo = lo;
-            k.hi = hi;
+            k.lo = static_cast<uint8_t>(lo);
+            k.hi = static_cast<uint8_t>(hi);
 
             if (key_off != kNoTarget)
             {
-                for (auto [vlo, vhi, vel_off] : ReadRegionTable(r, key_off))
+                for (auto [vlo, vhi, vel_off] : ReadRegionTable(r, key_off, kAnyVelocity))
                 {
                     KeyRegion::Vel v{vlo, vhi, std::nullopt};
                     if (vel_off != kNoTarget)
@@ -617,12 +623,20 @@ void SoundArchive::ReadTables(const Reader& r)
     const auto [info_off, info_size] = RequiredBlock(blocks, 0x2001, "INFO");
     const auto [file_off, file_size] = RequiredBlock(blocks, 0x2002, "FILE");
 
-    // Archives without names have a STRG offset of 0xFFFFFFFF.
+    // Archives without names have a STRG offset of 0xFFFFFFFF. A damaged STRG block leaves the sounds unnamed, rather
+    // than stopping the archive.
     std::map<uint32_t, std::string> item_names;
     const auto strg = blocks.find(0x2000);
     if (strg != blocks.end() && strg->second.first != 0xFFFFFFFF && strg->second.first < bytes_.size())
     {
-        item_names = ReadItemNames(r, strg->second.first, strg->second.second);
+        try
+        {
+            item_names = ReadItemNames(r, strg->second.first, strg->second.second);
+        }
+        catch (const FormatError&)
+        {
+            names_damaged_ = true;
+        }
     }
 
     auto name_of = [&](uint32_t item) -> std::string
@@ -663,7 +677,7 @@ void SoundArchive::ReadTables(const Reader& r)
     };
     for_each_entry(0x2100, "sound", read_sound);
 
-    // Generate missing bank and wave archive names from their indexes, as ReadSound does for sounds.
+    // As ReadSound does for sounds, generate missing bank and wave archive names from their indexes.
     auto read_bank = [&](uint32_t i, std::size_t p)
     {
         const std::string name = name_of(0x03000000 | i);
@@ -710,13 +724,14 @@ void SoundArchive::ReadTables(const Reader& r)
     // because banks may reference wave archives specific to their group, but they play the same waves. A group with
     // file ID 0xFFFFFFFF is not stored in the archive.
     std::vector<std::pair<std::string, uint32_t>> cut_short;
+    std::vector<std::string> unreadable;
     auto read_group = [&](uint32_t i, std::size_t p)
     {
         const std::string name = name_of(0x06000000 | i);
         const uint32_t file_id = r.U32(p);
         if (file_id < files_.size())
         {
-            ReadGroup(name.empty() ? "GROUP_" + std::to_string(i) : name, files_[file_id], cut_short);
+            ReadGroup(name.empty() ? "GROUP_" + std::to_string(i) : name, files_[file_id], cut_short, unreadable);
         }
     };
     if (tables.contains(0x2105))
@@ -728,9 +743,16 @@ void SoundArchive::ReadTables(const Reader& r)
         catch (const FormatError& e)
         {
             // Keep files from groups read before the bad entry.
-            group_errors_.push_back(std::string("cannot read group table (") + e.what() +
-                                    "); files stored only in groups may be missing");
+            unreadable.push_back(std::string("cannot read group table (") + e.what() +
+                                 "); files stored only in groups may be missing");
         }
+    }
+
+    // A group that can't be read leaves out the files stored only in it. If every file stored in groups has a copy in
+    // the groups read, it left out none.
+    if (std::ranges::any_of(files_, [](const FileEntry& f) { return f.grouped && !f.internal; }))
+    {
+        group_errors_.insert(group_errors_.end(), unreadable.begin(), unreadable.end());
     }
 
     // Omit truncated group files unless another group has a complete copy.
@@ -754,7 +776,8 @@ void SoundArchive::ReadTables(const Reader& r)
 }
 
 void SoundArchive::ReadGroup(const std::string& name, const FileEntry& group,
-                             std::vector<std::pair<std::string, uint32_t>>& cut_short)
+                             std::vector<std::pair<std::string, uint32_t>>& cut_short,
+                             std::vector<std::string>& unreadable)
 {
     if (!group.internal && !group.missing)
     {
@@ -809,8 +832,8 @@ void SoundArchive::ReadGroup(const std::string& name, const FileEntry& group,
     {
         if (!group.missing)
         {
-            group_errors_.push_back("group " + name + " is unreadable (" + e.what() +
-                                    "); omitting files stored only in this group");
+            unreadable.push_back("group " + name + " is unreadable (" + e.what() +
+                                 "); omitting files stored only in this group");
         }
     }
 }

@@ -92,10 +92,10 @@ struct VelocityRegion
 // A key range, subdivided into velocity ranges.
 struct KeyRegion
 {
-    // A velocity range and its optional region.
+    // A velocity range and its optional region. A velocity can pass 127, and a direct table's range has no upper bound.
     struct Vel
     {
-        uint8_t lo = 0, hi = 127;
+        int lo = 0, hi = 127;
         std::optional<VelocityRegion> region;
     };
 
@@ -144,8 +144,8 @@ enum class SoundType
     kUnknown
 };
 
-// Sound metadata. Missing names are generated from type and index, e.g. SEQ_12. Control characters, line breaks and
-// invalid UTF-8 bytes become '?', as they do in other item names.
+// Sound metadata. Missing names are generated from type and index, e.g. SEQ_12. As in other item names, control
+// characters, line breaks and invalid UTF-8 bytes become '?'.
 struct SoundInfo
 {
     std::string name;
@@ -215,6 +215,12 @@ public:
         return truncated_;
     }
 
+    // True if the archive's name table is damaged. Its sounds and banks then go by number.
+    bool NamesDamaged() const
+    {
+        return names_damaged_;
+    }
+
     // Errors reading groups. Files stored only in unreadable groups are unavailable.
     const std::vector<std::string>& GroupErrors() const
     {
@@ -236,9 +242,10 @@ private:
     void ReadTables(const Reader& r);
 
     // Locate files stored only in groups using CGRP group `name`. Keep locations already found in earlier groups.
-    // `group` is the CGRP file's table entry. Append truncated files to `cut_short` with the group name.
+    // `group` is the CGRP file's table entry. Append truncated files to `cut_short` with the group name, and the error
+    // to `unreadable` if the group can't be read.
     void ReadGroup(const std::string& name, const FileEntry& group,
-                   std::vector<std::pair<std::string, uint32_t>>& cut_short);
+                   std::vector<std::pair<std::string, uint32_t>>& cut_short, std::vector<std::string>& unreadable);
 
     std::vector<uint8_t> bytes_;
     std::vector<SoundInfo> sounds_;
@@ -246,6 +253,7 @@ private:
     std::vector<WaveArchiveInfo> wave_archives_;
     std::vector<FileEntry> files_;
     bool truncated_ = false;
+    bool names_damaged_ = false;
     bool groups_cut_ = false; // some groups lie past the end of the archive
     std::vector<std::string> group_errors_;
 };

@@ -7,10 +7,10 @@
 // envelope, key groups (group/off_by) and loops. LFOs use a sine with depth from CC1.
 //
 // Controller curves map kSfzLowPassController to lpf_1p cutoff (filter 1), and kSfzBiquadController to biquad cutoff,
-// resonance and gain. SFZ cannot bypass a biquad, so hicc/locc choose filtered or unfiltered regions at note-on.
+// resonance and gain. SFZ cannot bypass a biquad. Instead, hicc/locc select filtered or unfiltered regions at note-on.
 //
-// The low-pass must support being enabled during a note, so it stays active at sfizz's maximum 20 kHz cutoff when
-// nominally off. This attenuates 10 kHz by about 0.5 dB and 16 kHz by 1 dB.
+// The low-pass must support being enabled during a note. It therefore stays active at sfizz's maximum 20 kHz cutoff
+// when nominally off. This attenuates 10 kHz by about 0.5 dB and 16 kHz by 1 dB.
 
 #include "sfz.h"
 
@@ -116,17 +116,17 @@ public:
     {
         std::vector<std::string> names;
         bool loop = false;
-        uint32_t loop_start = 0, loop_end = 0; // inclusive, as required by SFZ
+        uint32_t loop_start = 0, loop_end = 0; // inclusive: SFZ requires that
     };
 
     explicit SampleSet(BankSet& banks) : banks_(banks)
     {
     }
 
-    // Get bank wave `wave_id_index` from `slot`, generating its samples on first use.
+    // Get bank wave `wave_id_index` from `slot`. Generate its samples on first use.
     const Wave& Get(int slot, uint32_t wave_id_index);
 
-    // Take ownership of the generated samples, leaving the collection empty.
+    // Take ownership of the generated samples. The collection is left empty.
     std::vector<SfzSample> Take()
     {
         return std::move(samples_);
@@ -182,8 +182,12 @@ std::string RegionOpcodes(const PresetKey& key, const VelocityRegion& r, const S
     const EnvelopeValues env =
         OverrideEnvelope({r.adshr.attack, r.adshr.decay, r.adshr.sustain, r.adshr.hold, r.adshr.release}, key);
     SfzEnvelope e = ConvertEnvelopeForSfz(env);
+    if (key.attack_timecents)
+    {
+        e.attack = std::exp2(*key.attack_timecents / 1200.0);
+    }
 
-    // Keep decaying after note-off for regions that ignore it, as in the SoundFont (see convert.cpp).
+    // As in the SoundFont (see convert.cpp), keep decaying after note-off for regions that ignore it.
     if (r.ignore_note_off && -SustainCentibels(env.sustain) >= kInaudibleSustain)
     {
         e.release = std::min(e.release, e.decay);
@@ -238,10 +242,23 @@ std::string RegionOpcodes(const PresetKey& key, const VelocityRegion& r, const S
         s += " group=" + std::to_string(r.key_group) + " off_by=" + std::to_string(r.key_group);
     }
 
+    // A region can select linear interpolation (1) or none (2) on the DSP. sfizz's sample_quality=1 is its linear
+    // interpolation. sample_quality=0 plays the nearest sample, and the DSP does the same with none. Other regions keep
+    // sfizz's default, a cubic interpolation. Cubic interpolation is the closest sfizz has to the DSP's polyphase
+    // filter.
+    if (r.interpolation == 1)
+    {
+        s += " sample_quality=1";
+    }
+    else if (r.interpolation == 2)
+    {
+        s += " sample_quality=0";
+    }
+
     return s;
 }
 
-// Write one line per region in preset `key`, adding `gain_db` to each volume.
+// Write one line per region in preset `key`. Add `gain_db` to each volume.
 std::string PresetRegions(const PresetKey& key, BankSet& banks, SampleSet& samples, double gain_db)
 {
     std::string s;
@@ -373,7 +390,7 @@ std::string TrackFile(const Performance& perf, int t, int bend_range, BankSet& b
     s += "\n";
     s += "<control>\ndefault_path=../" + kSfzSamplesFolder + "/\nhint_ram_based=1\n\n";
 
-    // Map CC10 to (value - 64) / 64, matching the SoundFont pan convention used by the MIDI writer.
+    // Map CC10 to (value - 64) / 64. That's the SoundFont pan convention that the MIDI writer uses.
     s += Curve(kPanCurve, "CC10 to pan", [](int v) { return (v - 64) / 64.0; });
     if (low_pass)
     {
@@ -401,7 +418,12 @@ std::string TrackFile(const Performance& perf, int t, int bend_range, BankSet& b
 
     const std::string bend = Number(bend_range * 100.0 * kBendScale, 6);
     s += "<global>\nbend_up=" + bend + " bend_down=-" + bend + "\n";
-    s += "pan_oncc10=100 pan_curvecc10=" + std::to_string(kPanCurve) + " pan_smoothcc10=10\n";
+    // Like the game's settings, CC7, CC10 and CC11 act at once. sfizz would otherwise smooth them over 10 ms, from CC7
+    // 100 at first. A note whose track sets its volume or pan in the tick it starts would then begin at the old value.
+    // As in nw::snd, curve 4 squares CC7 and CC11.
+    s += "pan_oncc10=100 pan_curvecc10=" + std::to_string(kPanCurve) + " pan_smoothcc10=0\n";
+    s += "amplitude_oncc7=100 amplitude_curvecc7=4 amplitude_smoothcc7=0 amplitude_oncc11=100 amplitude_curvecc11=4 "
+         "amplitude_smoothcc11=0\n";
     if (low_pass)
     {
         const std::string cc = std::to_string(kSfzLowPassController);

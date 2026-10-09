@@ -101,7 +101,7 @@ float PitchRatio(int pitch)
     }
 
     // Apply 2^octave, then the semitone and fractional tables in the game's order. The game handles octaves in pairs,
-    // but powers of two multiply exactly, so the result is the same.
+    // but powers of two multiply exactly. The result is the same.
     float ratio = 1.0f;
     for (int i = 0; i < octave; i++)
     {
@@ -150,8 +150,8 @@ float Lfo::Value() const
         return 0.0f;
     }
 
-    // Read the quarter sine forwards, backwards, then repeat with negative sign. Phase is below 1, keeping the index in
-    // bounds.
+    // Read the quarter sine forwards, backwards, then repeat with negative sign. Phase is below 1. The index therefore
+    // stays in bounds.
     const int p = static_cast<int>(phase_ * 128.0f);
     int sine;
     if (p < 32)

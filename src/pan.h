@@ -12,8 +12,8 @@ namespace citrusf2
 {
 
 // nw::snd's default pan law is left = sqrt((1 - p) / 2), right = sqrt((1 + p) / 2), for p in -1..1. FluidSynth and the
-// SoundFont 2 reference implementation use a sin/cos law: right = sin((p' + 1) * pi / 4). Both preserve power, so
-// matching their left/right ratios also matches their gains:
+// SoundFont 2 reference implementation use a sin/cos law: right = sin((p' + 1) * pi / 4). Both preserve power. Matching
+// their left/right ratios therefore also matches their gains:
 //
 // p' = 4 / pi * atan(sqrt((1 + p) / (1 - p))) - 1
 inline double SoundFontPan(double p)

@@ -94,8 +94,9 @@ jobs:
           (cd stage && zip -q -X "../dist/citrusf2-$VERSION-win-x64.zip" *)
           unzip -l "dist/citrusf2-$VERSION-win-x64.zip"
 
+      # Only a pushed tag publishes. A manual run started from a tag uploads the ZIP like any other manual run.
       - name: Publish release
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -103,7 +104,7 @@ jobs:
             --notes-file "docs/release-notes/$VERSION.md"
 
       - name: Upload package (manual run)
-        if: github.ref_type != 'tag'
+        if: github.event_name != 'push' || github.ref_type != 'tag'
         uses: actions/upload-artifact@v7
         with:
           name: citrusf2-${{ env.VERSION }}

@@ -50,9 +50,9 @@ constexpr float kAttackTable[128] = {
     0x1.1e513c0000000p-1f, 0x1.d210820000000p-2f, 0x1.51cb460000000p-2f, 0.0f,
 };
 
-// SoundFont attack is linear in amplitude; nw::snd attack is exponential in dB, staying quiet longer before rising
-// sharply. A ramp lasting 0.55 of the game's attack gives the lowest mean dB error at floors of -40, -60 and -90 dB.
-// The curve has the same shape for every attack value, so the fit applies to all of them.
+// SoundFont attack is linear in amplitude; nw::snd attack is exponential in dB. The game's attack stays quiet longer
+// before rising sharply. A ramp lasting 0.55 of the game's attack gives the lowest mean dB error at floors of -40, -60
+// and -90 dB. The curve has the same shape for every attack value. The fit therefore applies to all of them.
 //
 // At that point, nw::snd is within 0.5 dB of full level. Add the remaining time to the hold so decay starts on time. An
 // initial envelope delay would fit the start better, but FluidSynth delays sample playback too.
@@ -83,8 +83,8 @@ public:
     // Level in 0.1 dB.
     float Value() const;
 
-    // Level at release, in 0.1 dB units. An instant attack's Value() is full level before the first update, as in
-    // nw::snd, but its internal level is still -90.4 dB.
+    // Level at release, in 0.1 dB units. As in nw::snd, an instant attack's Value() is full level before the first
+    // update, but its internal level is still -90.4 dB.
     float RawValue() const;
 
 private:
@@ -113,7 +113,7 @@ EnvelopeSim::EnvelopeSim(const EnvelopeValues& v)
 
 void EnvelopeSim::Update(int msec)
 {
-    // EnvGenerator::Update (code.bin 0x31975c), as in the 3SF model.
+    // Follows the 3SF model of EnvGenerator::Update (code.bin 0x31975c).
     switch (status_)
     {
     case Status::kAttack:
@@ -177,8 +177,8 @@ float EnvelopeSim::RawValue() const
 
 double AttackMs(int attack)
 {
-    // Start at -90.4 dB and multiply once per millisecond until above -0.003 dB. Every multiplier is below 1, so the
-    // attack always finishes.
+    // Start at -90.4 dB and multiply once per millisecond until above -0.003 dB. Every multiplier is below 1. The
+    // attack therefore always finishes.
     const float a = AttackMultiplier(attack);
     float value = kSilentLevel;
     for (int ms = 1;; ms++)
@@ -289,8 +289,8 @@ float ReleasedLevel(float level, double rate, int64_t frames)
 
 int64_t ReleaseFrames(float level, double rate)
 {
-    // Channel::Update stops below -90.4 dB, comparing the envelope value * 0.1 in single precision. Release 127 crosses
-    // the entire range in one frame; release 0 takes about 116,000 frames.
+    // Channel::Update stops below -90.4 dB. The comparison takes the envelope value * 0.1 in single precision. Release
+    // 127 crosses the entire range in one frame; release 0 takes about 116,000 frames.
     const float step = static_cast<float>(rate) * static_cast<float>(kEnvStepMs);
     if (!(step > 0.0f))
     {
@@ -311,15 +311,18 @@ Sf2Envelope ConvertEnvelope(const EnvelopeValues& v)
 {
     Sf2Envelope e;
     const double attack_ms = v.attack < 127 ? AttackMs(v.attack) * kEnvTimeScale : 0.0;
-    e.attack = ToTimecents(attack_ms * kAttackRamp, -12000, 8000);
+    e.attack = ToTimecents(Sf2AttackMs(v), -12000, 8000);
 
     // SoundFont decay and release times specify a 100 dB fall, linear in dB. A decay slower than SoundFont allows gets
-    // a longer hold, as far as SoundFont allows that, so that it reaches the sustain level when the game's does.
+    // a longer hold, up to the longest hold SoundFont allows. Holding until the faster decay reaches the sustain level
+    // when the game's decay does would leave the note too loud until then. The error would be largest at the end of the
+    // hold. Half that hold splits the error evenly: as loud at the end of the hold as quiet when the decay reaches the
+    // sustain level.
     const double decay_ms = 1000.0 / DecayRate(v.decay) * kEnvTimeScale;
     double hold_ms = HoldMs(v.hold) * kEnvTimeScale + attack_ms * (1.0 - kAttackRamp);
     if (decay_ms > kSlowestSf2DecayMs)
     {
-        hold_ms += -SustainCentibels(v.sustain) / 1000.0 * (decay_ms - kSlowestSf2DecayMs);
+        hold_ms += -SustainCentibels(v.sustain) / 1000.0 * (decay_ms - kSlowestSf2DecayMs) / 2.0;
     }
     e.hold = ToTimecents(hold_ms, -12000, 5000);
     e.decay = ToTimecents(decay_ms, -12000, 8000);
@@ -327,6 +330,11 @@ Sf2Envelope ConvertEnvelope(const EnvelopeValues& v)
     e.release = ToTimecents(1000.0 / DecayRate(v.release) * kEnvTimeScale, -12000, 8000);
 
     return e;
+}
+
+double Sf2AttackMs(const EnvelopeValues& v)
+{
+    return v.attack < 127 ? AttackMs(v.attack) * kEnvTimeScale * kAttackRamp : 0.0;
 }
 
 SfzEnvelope ConvertEnvelopeForSfz(const EnvelopeValues& v)
@@ -337,7 +345,7 @@ SfzEnvelope ConvertEnvelopeForSfz(const EnvelopeValues& v)
 
     SfzEnvelope e;
     const double attack_ms = v.attack < 127 ? AttackMs(v.attack) * kEnvTimeScale : 0.0;
-    e.attack = attack_ms * kAttackRamp / 1000.0;
+    e.attack = Sf2AttackMs(v) / 1000.0;
     e.hold = (HoldMs(v.hold) * kEnvTimeScale + attack_ms * (1.0 - kAttackRamp)) / 1000.0;
     e.decay = kSfizzFall / DecayRate(v.decay) * kEnvTimeScale / 1000.0;
     e.sustain = 100.0 * std::pow(10.0, SustainCentibels(v.sustain) / 200.0);
