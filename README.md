@@ -17,6 +17,10 @@ citrusf2 [options] <archive.bcsar> [<archive.bcsar> ...]
   --seed N       initial game PRNG state (default 0x12345678)
   --var N=V      set variable N (0-15 player, 16-31 global) to V before each
                  sequence starts; repeat for more variables
+  --voices N     drop the notes that the game drops for lack of a voice,
+                 with N voices (the game has 24 unless it sets another
+                 count). The result only approximates the game.
+  --voices off   keep every note (default)
   --list         list sequences without converting
   --quiet        print errors only
   --version      show the version
@@ -26,6 +30,12 @@ Some sequences play nothing until the game sets one of their variables. `--var` 
 each sequence starts. As in the game, player and global variables start at -1. Use `--only` to
 choose the sequences it applies to.
 
+By default, citrusf2 keeps every note. `--voices N` drops notes as the game does when all N voices
+are in use. A new note then takes the voice of the note with the lowest priority. That note stops.
+A new note of lower priority than every sounding note is dropped. nw::snd has 24 voices unless a
+game sets another count. Pokémon X's code sets 23. The result only approximates the game.
+citrusf2 doesn't model the voices that the console's DSP drops.
+
 Files use the sequence names, with adjustments for Windows: forbidden characters and trailing
 dots or spaces become `_`, and reserved device names such as `CON` get an added `_`. If names
 differ only in ASCII letter case, later sequences get a sound-index suffix to avoid collisions
@@ -34,12 +44,12 @@ would collide with the SFZ sample folder. The default output folder is
 `<archive name>_citrusf2`, and its name follows the same rules. Use `--output` to choose another
 location.
 
-The conversion is based on the 3SF project's reverse engineering of the games' sound code.
+The conversion follows what the games' sound code does.
 
 ## Downloads
 
-The Releases page has citrusf2 for 64-bit Windows. On macOS and Linux, build it from source
-(see [Building](#building)).
+The Releases page has citrusf2 for 64-bit Windows. On macOS on Apple Silicon, build it from
+source (see [Building](#building)).
 
 ## Drag and drop
 
@@ -61,7 +71,7 @@ and macOS usually have one.
 
 CSEQ is bytecode, with variables, conditions, random arguments, calls, jumps, loops and tracks
 that start other tracks. citrusf2 executes it and records the resulting notes and controllers.
-The performer follows Pokémon X's nw::snd player as reconstructed by 3SF, including:
+The performer follows Pokémon X's nw::snd player, including:
 
 - All commands and their variable, comparison, random and `if` forms.
 - Note lengths, damper, key groups, tie/mono, `notewait off` and waits for sounding notes to
@@ -73,11 +83,12 @@ The performer follows Pokémon X's nw::snd player as reconstructed by 3SF, inclu
 - Tick scheduling in thousandths of CPU cycles, in single precision. The game's rounding
   occasionally places a tick in an adjacent sound frame.
 - The game's random generator, including its once-per-frame advance. Random choices therefore
-  depend on timing. In the game they also depend on what the sound system did before. Like 3SF's
-  model, citrusf2 starts the generator 17 steps after its seed.
+  depend on timing. In the game they also depend on what the sound system did before. citrusf2
+  starts the generator 17 steps after its seed.
 - Main-loop detection and MIDI loop markers. The main loop belongs to the lowest-numbered
   track that can still advance. A pass qualifies only if earlier tracks make no contribution.
-  Tracks waiting forever on held notes do not block this choice. A pass that changes nothing,
+  Tracks that wait forever, on held notes or for a negative number of ticks, do not block this
+  choice. A pass that changes nothing,
   such as one that only polls or counts a variable, qualifies only while no other track
   changes the sound or plays on. Setting a variable that another track reads counts as a
   change. A track that has sounded nothing and changed nothing for 10 seconds doesn't count as
@@ -85,9 +96,11 @@ The performer follows Pokémon X's nw::snd player as reconstructed by 3SF, inclu
   retries or variable polling, are not loops. Inside a subroutine, a jump back isn't a loop when
   its pass played no note that can be heard and ran a conditional jump, call, return or end that
   could leave the loop. A tie or mono legato on a note below hearing (see below) plays nothing
-  that can be heard. A held note that sounds until the game stops it keeps such a loop. A main
-  loop in which no note starts isn't a loop either once every earlier note has ended or is
-  fading out. The sequence then ends with its last sound.
+  that can be heard. A held note that sounds until the game stops it keeps such a loop. A loop
+  that a track runs inside a pass of another loop, such as a countdown of waits between notes,
+  is an inner loop. Its passes don't qualify until the track has played no pass of another loop
+  for 10 seconds. A main loop in which no note starts isn't a loop either once every earlier
+  note has ended or is fading out. The sequence then ends with its last sound.
   The markers go on the
   first pass that a player looping on them repeats as the game plays the next: the same notes at
   the same times, with the same settings and tempo. The first pass often differs. Setup before the
@@ -101,8 +114,8 @@ The performer follows Pokémon X's nw::snd player as reconstructed by 3SF, inclu
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
 Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks
-or more that its track waits out counts as held. The WSF project counts it the same way. Games
-use such notes, minutes long at a typical tempo, for sounds they stop themselves. That also
+or more that its track waits out counts as held. Games use such notes, minutes long at a
+typical tempo, for sounds they stop themselves. That also
 includes a main loop longer than 10 seconds that ends with more than 10 seconds of no change
 and sounds only endless notes held with tie or mono. The game's next pass usually continues
 those notes. A sequence that finishes naturally ends with its last sound, including release.
@@ -153,8 +166,10 @@ A MIDI channel has one set of controllers for all its notes. Each of the game's 
 settings. So while notes that the game plays differently from the track's later notes still
 sound, the track goes on to another channel if one is left. Those notes are release tails
 that the track has detached, and notes still sounding when a note starts that sweeps,
-starts at a raised velocity or requires a level of its own. Like a layer, each channel gets a
-MIDI track named after the sequence track.
+starts at a raised velocity or requires a level of its own. A note whose pitch LFO changes while
+it sounds goes on a channel of its own too. The channel's pitch bends follow the LFO (see "LFO
+settings" under [Differences from the game](#differences-from-the-game)). Like a layer, each
+channel gets a MIDI track named after the sequence track.
 
 ### SoundFont
 
@@ -267,16 +282,19 @@ in MIDI, SoundFont or SFZ:
   and balance mode, which pans stereo channels together, are reported.
 - **LFO settings.** Notes keep the speed, range, type and delay their track has at the end of
   their note-on's tick. That's when the game first gives them to the note. The game updates
-  these during playback, and a note that plays its LFO with later settings is reported. Depth
-  changes work through CC1.
+  these during playback. A note whose pitch LFO changes while it sounds goes on another channel
+  (see "MIDI"). Its preset there has no LFO. The channel's pitch bend adds the game's LFO value
+  in each sound frame. When no channel is left, the note keeps its note-on settings. citrusf2
+  reports that. A note whose volume or pan LFO changes is reported too. Depth changes work
+  through CC1.
 - **Deep tremolo.** The game's volume LFO can lower a note as far as silence but raise it by
   no more than 6 dB. The SoundFont and SFZ LFOs swing as far up as down. A volume LFO deeper
   than 6 dB is kept to 6 dB and reported. Such an LFO then dips less than in the game.
 - **SoundFont filters.** The two-pole low-pass closely matches the biquad low-pass. For the
   one-pole track filter, the two-pole one passes slightly more just above cutoff and less in the
-  top octave. Its slope is twice as steep. Cutoffs are fitted by `tools/filter_tables.py`.
-  High-pass and band-pass are omitted; two active low-passes use the lower cutoff. SFZ has all
-  these filters.
+  top octave. Its slope is twice as steep. Cutoffs are fitted by ntdlib's
+  `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted; two active
+  low-passes use the lower cutoff. SFZ has all these filters.
 - **Routing.** Surround pan and main send are omitted. Pan LFO is omitted from SoundFont but
   included in SFZ. The game's code determines whether effect buses A and B have an effect.
   Pokémon X runs none, and a send to them reaches nothing there. citrusf2 reports the sends and
@@ -290,10 +308,14 @@ in MIDI, SoundFont or SFZ:
 - **DSP output.** Synth interpolation differs from the DSP's interpolation, mainly above 8 kHz.
   Output limiting differs too. Region requests for linear or no interpolation are reported. The
   SFZ files follow them, and SoundFont synths use their usual interpolation.
-- **Voice limits.** The game has 24 voices; synths usually have more. If a track starts over
-  24 notes in one tick, citrusf2 keeps the first 24. The game keeps the newest. After 24
-  legatos in a tick, the MIDI note continues with its existing preset and no gain above its
-  starting level. Legatos that would otherwise require a new note are reported.
+- **Voice limits.** The game has 24 voices and drops notes when they run out. Synths usually have
+  more. By default, citrusf2 keeps every note. `--voices N` drops notes as the game does. With
+  `--voices`, if a track starts over 24 notes in one tick, citrusf2 keeps the first 24. The game
+  keeps the newest. Without it, the limit is 1024 notes. After 24 legatos in a tick, the MIDI note
+  continues with its existing preset and no gain above its starting level. Legatos that would
+  otherwise require a new note are reported. The game's DSP has 24 voices too. A stereo note takes
+  two of them. When they run out, the game drops more notes. citrusf2 keeps those notes with or
+  without `--voices`.
 
 SoundFont output follows the specification and targets FluidSynth. Player differences remain:
 
@@ -329,15 +351,23 @@ SoundFont output follows the specification and targets FluidSynth. Player differ
 
 ## Building
 
-Requires C++20 and CMake 3.20 or later, with no other build dependencies. CI builds and tests
-Windows/MSVC x64, macOS/Apple Clang on Apple Silicon and Intel, and Linux/GCC and Clang x64.
+Requires C++20 and CMake 3.20 or later, with no other build dependencies. citrusf2 supports
+macOS on Apple Silicon and Windows x64 with clang-cl. CI builds and tests both.
 
-- **Windows:** install Visual Studio 2022 or later with "Desktop development with C++",
-  including CMake. Use Developer PowerShell or Developer Command Prompt.
+- **Windows:** install Visual Studio 2022 with "Desktop development with C++", including CMake.
+  Add the "C++ Clang tools for Windows" component. Use Developer PowerShell or Developer Command
+  Prompt.
 - **macOS:** install Xcode command line tools (`xcode-select --install`) and CMake
   (`brew install cmake` or the installer from cmake.org).
-- **Linux:** install GCC or Clang and CMake. On Debian/Ubuntu:
-  `sudo apt install build-essential cmake`.
+
+citrusf2 builds on three libraries: seqlib, xsflib and ntdlib. The repository holds them as Git
+submodules in `externals/`. Clone it with its submodules:
+
+```sh
+git clone --recursive <repository URL>
+```
+
+In a clone made without `--recursive`, run `git submodule update --init` first.
 
 From the repository root:
 
@@ -347,51 +377,39 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
+On Windows, the first command is `cmake -S . -B build -A x64 -T ClangCL`. It selects clang-cl
+and 64-bit output.
+
 The executable is `build/citrusf2`, or `build/Release/citrusf2.exe` with Visual Studio. Xcode and
-other multi-configuration generators also use `build/Release`. MSVC links the runtime
-statically. The executable then runs without runtime DLLs. CI uploads the Windows executable as
-an artifact. macOS builds also produce `build/Citrusf2.app`. The app contains a copy of the
-program, and you can move it elsewhere.
+other multi-configuration generators also use `build/Release`. The Windows build links the
+runtime statically. The executable then runs without runtime DLLs. CI uploads the Windows
+executable as an artifact. macOS builds also produce `build/Citrusf2.app`. The app contains a
+copy of the program, and you can move it elsewhere.
 
 C++ formatting uses clang-format with the repository's `.clang-format`.
 
 ## Tests and tools
 
-`ctest` runs unit tests without game data. Coverage includes:
-
-- DSP-ADPCM and PCM16 decoding, including nw::snd's two-channel limit.
-- Truncated files, missing blocks, oversized wave/region counts, invalid bank/wave references,
-  and names containing control characters, line breaks or invalid UTF-8.
-- Group file lookup, malformed groups/tables, partial files, fallback to complete copies, and
-  groups missing from truncated archives. Archive truncation is distinguished from invalid
-  file offsets in otherwise complete archives.
-- Sequence start offsets and bank slots, loop detection, held loops, the time limit, tie/mono
-  and legato gain scaling, unheard notes, one-shot completion, tick rounding, unusual arguments,
-  stopped timing, variable polling, loops without waits, voice limits and approximation reports.
-- Envelope conversion, pitch ratios, LFO, pan, SoundFont/SFZ filters and loop unrolling.
-- SoundFont/MIDI output checked by independent readers, SFZ/WAV output and file naming.
+`ctest` runs the checks that need no game data: `citrusf2 --version` and the range of `--var`.
+The unit tests of the conversion are in seqlib and ntdlib. ntdlib runs its converter tests with
+citrusf2's settings on synthetic 3DS sound archives. They cover the archive and wave readers,
+the sequence player's timing, loops, legatos and limits, the envelope, pitch and filter models,
+and the MIDI, SoundFont and SFZ files.
 
 Other checks and tools:
 
 - `-DCITRUSF2_TEST_ARCHIVE=path/to/archive.bcsar` adds a test that converts every sequence in
   that archive. Independent readers check each output file.
-- `tools/check_sf2.py` checks SoundFont structure using Python alone.
-- `tools/filter_tables.py` derives the SoundFont and SFZ filter tables in `src/filter.cpp`
-  from a locally supplied Pokémon X `code.bin`. Requires Python 3 and numpy.
-- `tools/compare_with_3sf.py` compares FluidSynth renders of converted files with 3SF renders
-  using locally supplied game archives and DSP firmware. It removes MIDI tempo changes while
-  preserving event times to avoid FluidSynth's cumulative rounding. Reports cover timing,
-  level, spectrum and stereo balance; `--timeline` adds per-second results. Requires Python 3,
-  numpy, FluidSynth, 3SF's
-  `3sfrip`/`3sfplay` and DSP firmware such as `dspaudio.cdc`:
-  `tools/compare_with_3sf.py --firmware dspaudio.cdc --3sf <3SF's build folder> <citrusf2> <archive.bcsar>`.
-  Use `--sfizz <libsfizz>` to render SFZ instead. Each MIDI track then plays through its
-  sequence track's SFZ file.
+- seqlib's `seqlib_check` program checks the structure of SoundFont and MIDI files. Configure with
+  `-DSEQLIB_BUILD_TOOLS=ON`, then build the `seqlib_check` target.
+- ntdlib's `tools/sequence_export/filter_tables.py ctr <code.bin>` derives the SoundFont and SFZ
+  filter tables from a locally supplied Pokémon X `code.bin`. Requires Python 3 and numpy.
 
-These development tools require game files supplied separately; neither citrusf2 nor 3SF
-distributes those files. Normal conversion requires only the input `.bcsar` archive.
+The archive test and the filter tables require game files supplied separately. Neither citrusf2
+nor ntdlib distributes them. Normal conversion requires only the input `.bcsar` archive.
 
 ## Licence
 
-[MIT](LICENSE). The archive readers follow the MIT-licensed 3SF project. Game data is not
-covered by this licence.
+citrusf2 is under the [MIT](LICENSE) licence. The libraries it builds on, seqlib, xsflib and
+ntdlib, are under the MIT licence too. `THIRD-PARTY-NOTICES.md` gives their licence texts. Game
+data is not covered by this licence.
