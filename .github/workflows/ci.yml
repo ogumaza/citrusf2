@@ -28,7 +28,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}
       - uses: ./externals/xsflib/ci/build-and-test
         with:
           cmake: ${{ matrix.cmake }}

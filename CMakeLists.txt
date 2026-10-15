@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.20)
 # citrusf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(citrusf2 VERSION 1.0.3 LANGUAGES CXX)
+project(citrusf2 VERSION 1.0.4 LANGUAGES CXX)
 
 foreach(submodule seqlib xsflib ntdlib)
   if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/${submodule}/CMakeLists.txt")

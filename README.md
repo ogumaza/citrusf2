@@ -305,7 +305,17 @@ in MIDI, SoundFont or SFZ:
   sequence's level falls. SoundFont also cannot amplify a sample: if any used region
   exceeds volume 127, every zone is attenuated equally to preserve region balance. citrusf2
   reports the reduction. SFZ restores the MIDI gain and keeps each region's original volume.
-- **DSP output.** Synth interpolation differs from the DSP's interpolation, mainly above 8 kHz.
+- **DSP output.** The DSP resamples each voice through one of three filters. The voice's rate
+  decides which: the pitch times the wave's sample rate, over the output's 32,728 Hz. At a rate
+  of 1 or below, the filter loses about as much as the synths' interpolation. Above 1, and more
+  above 4/3, it cuts more of the highs. SoundFont zones and SFZ regions above a rate of 1
+  therefore have a low-pass whose cutoff tracks the key. ntdlib's
+  `tools/sequence_export/resampling_filters.py` fits the cutoffs to the DSP's filters. The
+  low-pass follows the rate at the zone's key, without bend, sweep or LFO. In the game, the
+  filter changes whenever a bend, sweep or LFO moves the rate across 1 or 4/3. A SoundFont
+  preset whose filter changes during notes has no such low-pass. citrusf2 reports its notes above
+  a rate of 1. In the SFZ files, a track that uses both the low-pass and the biquad has no
+  filter left for it. Notes there that start with the biquad on get no resampling low-pass.
   Output limiting differs too. Region requests for linear or no interpolation are reported. The
   SFZ files follow them, and SoundFont synths use their usual interpolation.
 - **Voice limits.** The game has 24 voices and drops notes when they run out. Synths usually have
@@ -319,6 +329,11 @@ in MIDI, SoundFont or SFZ:
 
 SoundFont output follows the specification and targets FluidSynth. Player differences remain:
 
+- **Level.** FluidSynth runs the SoundFont low-pass filter on every note. That includes notes
+  whose filter is open. The filter divides the level by the square root of its Q. FluidSynth
+  converts the default resonance of 0 dB to a Q of 0.707. Every note therefore plays 1.5 dB
+  louder than the SoundFont specifies. Multiplying FluidSynth's gain by 0.84 gives the specified
+  level.
 - **Pan.** Pans are mapped from nw::snd's square-root law to FluidSynth's sin/cos law.
   TinySoundFont uses a square-root law, and its pans come out slightly narrower.
 - **Envelopes.** Times follow the specification's 100 dB range. FluidSynth uses 96 dB. Decays
