@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// Convert every sequence of a sound archive (.bcsar) with citrusf2's settings, and check each conversion with the
-// readers of seqlib. ntdlib's tests hold the conversion's unit tests and run them with these settings.
+// Converts every sequence of a sound archive (.bcsar) with the 3DS's settings and checks each conversion. The unit
+// tests of the code in ntdlib and seqlib are in those libraries.
+//
+//     citrusf2_test <archive.bcsar>
 
 #include "ntdlib/sequence_export/consoles.h"
 #include "ntdlib/testing/sequence_export_check.h"

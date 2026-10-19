@@ -85,32 +85,32 @@ The performer follows Pokémon X's nw::snd player, including:
 - The game's random generator, including its once-per-frame advance. Random choices therefore
   depend on timing. In the game they also depend on what the sound system did before. citrusf2
   starts the generator 17 steps after its seed.
-- Main-loop detection and MIDI loop markers. The main loop belongs to the lowest-numbered
-  track that can still advance. A pass qualifies only if earlier tracks make no contribution.
-  Tracks that wait forever, on held notes or for a negative number of ticks, do not block this
-  choice. A pass that changes nothing,
-  such as one that only polls or counts a variable, qualifies only while no other track
-  changes the sound or plays on. Setting a variable that another track reads counts as a
-  change. A track that has sounded nothing and changed nothing for 10 seconds doesn't count as
-  playing on. Backward jumps to unvisited commands and passes without waits, such as random
-  retries or variable polling, are not loops. Inside a subroutine, a jump back isn't a loop when
-  its pass played no note that can be heard and ran a conditional jump, call, return or end that
+- Main-loop detection and MIDI loop markers. The main loop belongs to the lowest-numbered track
+  that can still advance. A pass qualifies only if earlier tracks make no contribution. Tracks
+  that wait forever, on held notes or for a negative number of ticks, do not block this choice.
+  A pass that changes nothing, such as one that only polls or counts a variable, qualifies only
+  while no other track changes the sound or plays on. Setting a variable that another track
+  reads counts as a change. A tie or mono legato on a note below hearing (see below) changes
+  nothing that can be heard. A track that has sounded nothing and changed nothing for 10
+  seconds doesn't count as playing on. A sequence whose tracks all reach their end has no main
+  loop. Backward jumps to unvisited commands and passes without waits, such as random retries
+  or variable polling, are not loops. Inside a subroutine, a jump back isn't a loop when its
+  pass played no note that can be heard and ran a conditional jump, call, return or end that
   could leave the loop. A tie or mono legato on a note below hearing (see below) plays nothing
   that can be heard. A held note that sounds until the game stops it keeps such a loop. A loop
   that a track runs inside a pass of another loop, such as a countdown of waits between notes,
   is an inner loop. Its passes don't qualify until the track has played no pass of another loop
   for 10 seconds. A main loop in which no note starts isn't a loop either once every earlier
-  note has ended or is fading out. The sequence then ends with its last sound.
-  The markers go on the
-  first pass that a player looping on them repeats as the game plays the next: the same notes at
-  the same times, with the same settings and tempo. The first pass often differs. Setup before the
-  loop can land in its first tick, the game can keep a value from pass to pass, and later passes
-  may only tie again a note that the first strikes. When no pass repeats as the game but the next
-  pass would, the performance plays that pass too. Otherwise the markers stay on the first pass. A
-  loop that draws random numbers keeps its first pass too. At the loop's start, the MIDI file
-  sends each controller, pitch, preset and tempo that the game gives back there when the loop
-  ends with another value. Without it, a player that loops on the markers would keep the loop
-  end's value.
+  note has ended or is fading out. The sequence then ends with its last sound. The markers go
+  on the first pass that a player looping on them repeats as the game plays the next: the same
+  notes at the same times, with the same settings and tempo. The first pass often differs.
+  Setup before the loop can land in its first tick, the game can keep a value from pass to
+  pass, and later passes may only tie again a note that the first strikes. When no pass repeats
+  as the game but the next pass would, the performance plays that pass too. Otherwise the
+  markers stay on the first pass. A loop that draws random numbers keeps its first pass too. At
+  the loop's start, the MIDI file sends each controller, pitch, preset and tempo that the game
+  gives back there when the loop ends with another value. Without it, a player that loops on
+  the markers would keep the loop end's value.
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
 Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks
@@ -190,7 +190,7 @@ regions become zones with:
   slowest. The SFZ files keep the game's times.
 - Key groups mapped to exclusive classes.
 - Loops repeated as needed to meet SoundFont padding rules: 8 samples before, at least 32
-  within, and 8 after. This preserves playback.
+  within, and 32 after. This preserves playback.
 - Continued playback for regions that ignore note-off. Their MIDI notes end when the game
   would release them, with release settings that also preserve decay after a repeated strike.
 
@@ -367,7 +367,8 @@ SoundFont output follows the specification and targets FluidSynth. Player differ
 ## Building
 
 Requires C++20 and CMake 3.20 or later, with no other build dependencies. citrusf2 supports
-macOS on Apple Silicon and Windows x64 with clang-cl. CI builds and tests both.
+macOS on Apple Silicon and Windows x64 with clang-cl. CI builds on both platforms and runs the
+tests on Windows.
 
 - **Windows:** install Visual Studio 2022 with "Desktop development with C++", including CMake.
   Add the "C++ Clang tools for Windows" component. Use Developer PowerShell or Developer Command

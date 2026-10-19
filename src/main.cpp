@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-// citrusf2's command line, on ntdlib's converter frame: convert the sequences of 3DS sound archives (.bcsar) to MIDI,
-// SoundFont 2 and SFZ files.
+// citrusf2: convert 3DS sound archive sequences (.bcsar) to MIDI, SoundFont and SFZ.
+//
+//     citrusf2 [options] <archive.bcsar> [<archive.bcsar> ...]
+//
+// Output goes beside each archive. Windows accepts files dropped on the executable; macOS uses Citrusf2.app.
 
 #include "ntdlib/sar/formats.h"
 #include "ntdlib/sequence_export/archive_converter.h"

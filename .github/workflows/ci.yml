@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
 
+# Builds citrusf2 whenever main changes: on Windows x64 with clang-cl, and on macOS ARM64. The Windows job runs ctest
+# too. The macOS job builds without the tests (BUILD_TESTING=OFF). Changes to documentation alone don't start a run.
 name: CI
 
 on:
@@ -14,6 +16,7 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +27,7 @@ jobs:
             artifact: citrusf2-windows-x64
           - name: macOS ARM64 (Apple Clang)
             os: macos-15
+            cmake: -DBUILD_TESTING=OFF
     steps:
       - uses: actions/checkout@v7
         with:
