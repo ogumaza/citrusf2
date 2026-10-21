@@ -3,14 +3,14 @@
 cmake_minimum_required(VERSION 3.20)
 # citrusf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(citrusf2 VERSION 1.0.5 LANGUAGES CXX)
+project(citrusf2 VERSION 1.0.6 LANGUAGES CXX)
 
 # The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that citrusf2 shares
 # with the other converters and the players: the archive reader, the performer, the conversion and the command-line
 # frame (ntdlib::sequence_export). xsflib holds the common code that ntdlib builds on, and the CMake helpers. xsflib's
 # XsflibProject.cmake sets the C++ standard, a release build by default, the static C runtime and the compiler options
 # that keep the output the same on every platform. ntdlib builds on seqlib and xsflib. xsflib_add_libraries adds ntdlib
-# last. XsflibProject.cmake defines that function. The function stops if a submodule is missing. The check below
+# last. XsflibProject.cmake defines that macro. The macro stops if a submodule is missing. The check below
 # covers xsflib itself.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/externals/xsflib/CMakeLists.txt")
   message(FATAL_ERROR "externals/xsflib is missing. Run: git submodule update --init")

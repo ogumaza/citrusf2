@@ -212,8 +212,8 @@ these. For it, citrusf2 also writes:
   are separate files, panned left and right.
 
 SFZ players ignore MIDI channels, and each file contains one instrument. Load the MIDI in a DAW
-and assign an SFZ player, such as sfizz, to each track with its matching file. Output targets
-sfizz 1.2.
+and assign an SFZ player, such as sfizz, to each track with its matching file. The player tested
+is sfizz 1.2.
 
 Presets use program change, plus bank select (CC0) when a sequence has more than 128 presets.
 Regions match the SoundFont, with these differences:
@@ -227,9 +227,9 @@ Regions match the SoundFont, with these differences:
   unfiltered regions at note-on, and that choice lasts for the note. A note takes the choice
   that its sound frame ends with. The game's notes do the same. Each track uses its first biquad
   type. Later types are omitted and reported.
-- **Envelopes.** Decays and releases in sfizz fall linearly in dB, like those in the game, by
-  78.17 dB over their given time. They use the game's time for that fall. Attack uses the
-  SoundFont fit described above.
+- **Envelopes.** As in the game, decays and releases fall linearly in dB. The documentation's
+  curve falls by a factor of e^-8 over the specified time. That's 69.49 dB. They use the game's
+  time for that fall. Attack uses the SoundFont fit described above.
 - **LFO.** SFZ uses a sine, matching the game, and supports pan LFO.
 - **Pan.** A curve maps CC10 to `(value - 64) / 64`. That's the SoundFont convention that the
   MIDI output uses.
@@ -245,14 +245,36 @@ Regions match the SoundFont, with these differences:
   The DSP does the same. Other regions use sfizz's default, a cubic interpolation. Cubic
   interpolation is the closest sfizz has to the DSP's polyphase filter.
 
-Two sfizz 1.2.3 quirks affect playback:
+Three sfizz 1.2.3 quirks affect playback:
 
+- **Decays and releases.** sfizz ends them sooner than the documentation's curve. Over the
+  specified time, sfizz falls by a factor of e^-9: 78.17 dB. Where the game has fallen 40 dB,
+  sfizz has fallen 45 dB.
 - **Sample rate.** Loading a file configures its filters for 48 kHz. A subsequent sample-rate
   change corrects them. At other rates, load files before setting the rate. `sfizz_render` and
   `sfizz_jack` set it first; `sfizz_render` defaults to 48 kHz unless told otherwise.
 - **Streaming.** During offline rendering, streamed samples can fall silent after their
   preloaded portion. The files request full loading with `hint_ram_based=1`. sfizz prints
   "Unsupported value for hint_stealing: 1" for this; the message is harmless.
+
+The opcodes follow their documentation at sfzformat.com, with these exceptions:
+
+- **Long decays and releases.** A decay or release can last longer than the documented limit of
+  100 s. The game's envelope falls that slowly. sfizz 1.2 plays the time as written.
+- **Loud regions.** A region's `volume` can lie above the documented limit of 6 dB. sfizz 1.2
+  takes volumes up to 48 dB.
+- **Low resonances.** The game's biquad presets have resonances down to -46 dB. The documented
+  range starts at 0 dB. Each biquad track's curve reaches resonances below 0 dB. sfizz 1.2 plays
+  those resonances.
+- **A wide resonance amount.** Biquad type 5 has steps down to -46 dB. A track of that type
+  moves its resonance in units of 50 dB. The documentation gives the amount a range of -40 to
+  40 dB.
+- **High cutoffs.** A region pitched far up can get a low-pass cutoff above half the output's
+  sample rate. The documentation gives half the rate as the limit.
+- **No interpolation.** A region that selects no interpolation gets `sample_quality=0` (see
+  "Interpolation" above). The documented range starts at 1.
+- **Wide bends.** A track that bends by more than 96 semitones gets `bend_up` and `bend_down`
+  beyond the documented limit of 9600 cents.
 
 ## Differences from the game
 
@@ -327,7 +349,8 @@ in MIDI, SoundFont or SFZ:
   two of them. When they run out, the game drops more notes. citrusf2 keeps those notes with or
   without `--voices`.
 
-SoundFont output follows the specification and targets FluidSynth. Player differences remain:
+SoundFont output follows the specification, apart from the zones' attenuation and the biquad
+low-pass's resonance. Player differences remain:
 
 - **Level.** FluidSynth runs the SoundFont low-pass filter on every note. That includes notes
   whose filter is open. The filter divides the level by the square root of its Q. FluidSynth
@@ -340,21 +363,32 @@ SoundFont output follows the specification and targets FluidSynth. Player differ
   and releases then fall 4% slower in decibels, and sustain levels are 4% shallower: -11.9 dB
   plays as -11.4 dB. FluidSynth also slows any release faster than 15.6 ms (-7200 timecents) to
   that time.
-- **Tremolo.** In FluidSynth, a volume LFO can't raise a note above full level. On a note that
-  sustains at full level, a tremolo only dips. The game's tremolo swings as far up as down.
-- **Attenuation.** Like E-mu hardware, FluidSynth applies 0.4 of a zone's initial attenuation.
-  The specification applies all of it. A region at volume 64 therefore plays 2.4 dB below one
-  at 127 in FluidSynth, rather than 6 dB. Attenuation for regions above 127 is reduced the same
-  way.
+- **Tremolo.** In FluidSynth before 2.4.0, a volume LFO can't raise a note above full level. On
+  a note that sustains at full level, a tremolo only dips. The game's tremolo swings as far up
+  as down.
+- **Attenuation.** FluidSynth, BASSMIDI and the E-mu chips apply 0.4 of a zone's initial
+  attenuation. The specification calls for all of it. citrusf2 therefore writes 2.5 times a
+  zone's attenuation in the generator, up to the generator's limit of 1440 cB. Those players
+  play that limit as 57.6 dB. A modulator without a source holds any attenuation beyond
+  57.6 dB. FluidSynth 2.4.5 and later apply that modulator. BASSMIDI and earlier versions of
+  FluidSynth ignore it. A player that follows the specification plays every attenuated zone too
+  quietly. TinySoundFont plays a quarter of the attenuation. Before 27 January 2025,
+  TinySoundFont played 2.5 times the attenuation.
 - **Low-pass level.** In FluidSynth, a note through the SoundFont's version of the biquad
   low-pass plays 0.85 dB below an unfiltered one. The game's filter lowers it by 0.5 dB.
+- **Resonance.** FluidSynth, BASSMIDI and the E-mu chips play a resonance of r dB as r - 3 dB at
+  the cutoff. The specification calls for r dB. citrusf2 writes the biquad low-pass's resonance
+  for those players. A player that follows the specification plays 3 dB more at the cutoff.
 - **Pitch.** FluidSynth rounds pitch down to whole cents. Fractional bends can be almost a
   cent flat. A long note's loop can then drift by up to 35 ms per minute against the game.
 - **Key groups.** The game releases interrupted group notes at rate 126. They fade out in under
-  40 ms. FluidSynth uses -200 timecents for exclusive-class cuts, about 0.9 s over the full
-  envelope range.
-- **Modulators.** TinySoundFont doesn't support SoundFont modulators. CC1 LFO depth and CC102
-  filter changes have no effect there.
+  40 ms. FluidSynth 2.4.3 and later cut such notes with -2000 timecents, about 0.3 s over the
+  full envelope range. Earlier versions use -200 timecents, about 0.9 s. BASSMIDI ends them in
+  about 4 ms.
+- **Modulators.** BASSMIDI 2.4.16 ignores the CC1 and CC102 modulators. CC1 then gives the
+  specification's default vibrato in every zone: 50 cents at CC1 127. A tremolo becomes that
+  vibrato. Filters that change during a note stay open. TinySoundFont doesn't support SoundFont
+  modulators. CC1 LFO depth and CC102 filter changes have no effect there.
 - **Tempo changes.** FluidSynth rounds its position to the nearest MIDI tick at each change
   and restarts its clock there. This can advance playback by half a tick per change: 1/30 ms
   at 120 BPM with 7680 ticks per quarter note. TinySoundFont rounds tempo-change times down to
