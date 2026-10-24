@@ -21,6 +21,8 @@ citrusf2 [options] <archive.bcsar> [<archive.bcsar> ...]
                  with N voices (the game has 24 unless it sets another
                  count). The result only approximates the game.
   --voices off   keep every note (default)
+  --reverb       write effect send A as CC91 (reverb), for games that put a
+                 reverb on bus A
   --list         list sequences without converting
   --quiet        print errors only
   --version      show the version
@@ -35,6 +37,11 @@ are in use. A new note then takes the voice of the note with the lowest priority
 A new note of lower priority than every sounding note is dropped. nw::snd has 24 voices unless a
 game sets another count. Pokémon X's code sets 23. The result only approximates the game.
 citrusf2 doesn't model the voices that the console's DSP drops.
+
+By default, CC91 stays at 0. `--reverb` writes each track's send to effect bus A as CC91, the
+synth's reverb send. Use it for a game that puts a reverb on bus A (see "Routing" under
+[Differences from the game](#differences-from-the-game)). A conversion with `--reverb` marks the
+same loops as one without it. Only the CC91 events differ.
 
 Files use the sequence names, with adjustments for Windows: forbidden characters and trailing
 dots or spaces become `_`, and reserved device names such as `CON` get an added `_`. If names
@@ -152,7 +159,7 @@ final settings, and MIDI controller changes are written before notes at the same
 | Track pan | CC10, mapped to the SoundFont pan law |
 | Pitch bend, sweep, portamento and legato key changes | Pitch bend, with RPN 0 range set per channel |
 | LFO depth | CC1 = depth / 2, mapped to vibrato or tremolo in the SoundFont |
-| Effect sends A and B | Reported, and CC91 and CC93 stay at 0 (see "Routing" under [Differences from the game](#differences-from-the-game)) |
+| Effect sends A and B | Reported, and CC91 and CC93 stay at 0. With `--reverb`, CC91 takes send A (see "Routing" under [Differences from the game](#differences-from-the-game)) |
 | Immediate track silence | CC120 |
 | Filters that change during sounding notes | CC102, mapped to SoundFont cutoff by a modulator |
 | Track low-pass (0xd8), for SFZ | CC103 = 64 minus the argument; values <= 6 mean off |
@@ -318,9 +325,14 @@ in MIDI, SoundFont or SFZ:
   `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted; two active
   low-passes use the lower cutoff. SFZ has all these filters.
 - **Routing.** Surround pan and main send are omitted. Pan LFO is omitted from SoundFont but
-  included in SFZ. The game's code determines whether effect buses A and B have an effect.
-  Pokémon X runs none, and a send to them reaches nothing there. citrusf2 reports the sends and
-  keeps CC91 and CC93 at 0. A synth's default sends then add no reverb or chorus either.
+  included in SFZ. A game's code puts the effects on effect buses A and B. A send to a bus
+  without an effect reaches nothing. By default, citrusf2 reports the sends and keeps CC91 and
+  CC93 at 0. A synth's default sends then add no reverb or chorus either. WarioWare Gold and The
+  Legend of Zelda: Ocarina of Time 3D put a reverb on bus A. Pokémon X puts one there in the
+  field. For these games, `--reverb` writes send A as CC91. The synth's reverb isn't the game's.
+  The Legend of Zelda: Majora's Mask 3D puts nothing on bus A. Some games pick their effects for
+  each scene. Send B stays out. CC93 is a chorus send, and MIDI has no controller for the delays
+  that some games put on bus B.
 - **Volume limits.** Archive sound volume, track volume, second/main volume and region volume
   can reach 255. MIDI CC7 holds track volume up to 127. CC11 holds the rest, also up to 127. If
   necessary, all CC11 values are scaled equally. The tracks keep their balance, and the

@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.20)
 # citrusf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(citrusf2 VERSION 1.0.6 LANGUAGES CXX)
+project(citrusf2 VERSION 1.0.7 LANGUAGES CXX)
 
 # The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that citrusf2 shares
 # with the other converters and the players: the archive reader, the performer, the conversion and the command-line
