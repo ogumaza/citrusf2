@@ -247,12 +247,15 @@ Regions match the SoundFont, with these differences:
   pan.
 - **Loops.** sfizz crossfades the loop end with data before the loop start over at least 1 ms.
   Samples include 4 ms of repeated loop data before the start, and the crossfade can't be heard.
+- **Key groups.** A note of a key group ends the group's other notes with the game's fade at
+  release rate 126 (`off_mode=time` and `off_time`). A SoundFont's exclusive class can't set
+  that fade.
 - **Interpolation.** A region that selects linear interpolation on the DSP gets sfizz's linear
   one (`sample_quality=1`). One that selects none plays the nearest sample (`sample_quality=0`).
   The DSP does the same. Other regions use sfizz's default, a cubic interpolation. Cubic
   interpolation is the closest sfizz has to the DSP's polyphase filter.
 
-Three sfizz 1.2.3 quirks affect playback:
+Five sfizz 1.2.3 quirks affect playback:
 
 - **Decays and releases.** sfizz ends them sooner than the documentation's curve. Over the
   specified time, sfizz falls by a factor of e^-9: 78.17 dB. Where the game has fallen 40 dB,
@@ -263,6 +266,13 @@ Three sfizz 1.2.3 quirks affect playback:
 - **Streaming.** During offline rendering, streamed samples can fall silent after their
   preloaded portion. The files request full loading with `hint_ram_based=1`. sfizz prints
   "Unsupported value for hint_stealing: 1" for this; the message is harmless.
+- **Mono samples.** sfizz pans a mono sample by the sin/cos law and then raises both sides by
+  3 dB. Every sample of the files is mono. Every region therefore plays 3.0 dB above the game's
+  level, at every pan. The balance of the mix stays the same. Lowering sfizz's volume by 3 dB
+  gives the game's level.
+- **Repeated keys.** A key group in sfizz never cuts a note of the same key as the new note. The
+  documentation's `off_by` cuts it. A key of a group struck again therefore leaves the earlier
+  note playing in sfizz. The game fades that note out at release rate 126.
 
 The opcodes follow their documentation at sfzformat.com, with these exceptions:
 
