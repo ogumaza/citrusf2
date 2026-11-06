@@ -30,7 +30,10 @@ citrusf2 [options] <archive.bcsar> [<archive.bcsar> ...]
 
 Some sequences play nothing until the game sets one of their variables. `--var` sets one before
 each sequence starts. As in the game, player and global variables start at -1. Use `--only` to
-choose the sequences it applies to.
+choose the sequences it applies to. For some games, citrusf2 sets the variables and the random
+state of some sounds as the game does (see [Sequence playback](#sequence-playback)). For those
+sounds, the game's values replace those that `--var` and `--seed` give for the same variables
+and random state.
 
 By default, citrusf2 keeps every note. `--voices N` drops notes as the game does when all N voices
 are in use. A new note then takes the voice of the note with the lowest priority. That note stops.
@@ -117,7 +120,9 @@ The performer follows Pokémon X's nw::snd player, including:
   markers stay on the first pass. A loop that draws random numbers keeps its first pass too. At
   the loop's start, the MIDI file sends each controller, pitch, preset and tempo that the game
   gives back there when the loop ends with another value. Without it, a player that loops on
-  the markers would keep the loop end's value.
+  the markers would keep the loop end's value. `--loops N` plays the marked pass N times. The
+  passes before it play once, ahead of the loops. A file whose markers sit on the second pass
+  therefore holds N + 1 passes of the loop's music.
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
 Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks
@@ -132,6 +137,189 @@ the note ends at 40 dB down. In the game, the channel goes on in silence.
 Performances stop after 15 minutes; one that has been silent for more than 10 seconds by then
 ends with its last sound too. Tempo or timebase 0 stops sequence timing while notes keep
 playing; those notes finish normally, or use the same 10-second limit if held indefinitely.
+
+Mario Party: Island Tour plays its menu music in four layers. The main menu plays four tracks
+of the piece. Deeper menus add tracks. The rule and minigame screens play all sixteen. Given the
+game's sound archive (the USA release), citrusf2 plays the piece as the main menu does. In the
+MIDI file, the other twelve tracks keep their notes at CC11 0. citrusf2 also writes a file for
+each other layer: SEQ_BGM_MENU_game_select (seven tracks), _character_select (ten tracks) and
+_minigame_select (all sixteen).
+
+Seven of its minigame and boss pieces take their tempo from a value that the game writes as they
+play, most often the time left. citrusf2 starts each at the game's value, with the tracks that
+the game plays. It also writes a file named _hurry for the state with 10 seconds left, where the
+tempo has risen. SEQ_BGM_MNG_012's tempo follows the speed of the player's ball. citrusf2 plays
+it at full speed, and it writes _second and _third for its two other layers.
+
+Mario Party: Star Rush plays the music of one minigame from one sequence, SQ_BGM_MGN708. The
+minigame writes a variable that picks the pattern each pass of the loop plays. Another variable
+moves the music on from the first set of four patterns to the second. Given the sound archive
+that holds the piece (the USA release), citrusf2 plays SQ_BGM_MGN708 as the minigame starts it.
+It also writes a file for each pattern of the first set, in the order in which the minigame
+plays them, such as SQ_BGM_MGN708_otehon. SQ_BGM_MGN708_B_FIRST starts the second set with one
+of its patterns. citrusf2 writes it once more with each of the other three, such as
+SQ_BGM_MGN708_B_FIRST_kaitou.
+
+The Legend of Zelda: Ocarina of Time 3D sets the volumes of some tracks of its Lon Lon Ranch
+music as it plays. Malon sings the melody on two tracks. An instrument plays the same melody on
+a third. As Link comes near her, the game fades her voice in and the instrument out.
+Given the game's sound archive (the USA release), citrusf2 plays the piece as it sounds near
+Malon. In the MIDI file, the instrument's track keeps its notes at CC11 0.
+
+WarioWare Gold plays three jingles of its Tricky challenge in one of two arrangements. The
+jingles come between the microgames. The game silences one arrangement and plays the other. It
+plays the first while one of Lulu's tricks is on. It plays the second while she announces the
+next trick. Given the game's sound archive, citrusf2 plays the first. In the MIDI files, the
+second arrangement's tracks keep their notes at CC11 0. The game fades those tracks out over a
+jingle's first 49 ms. citrusf2 silences them from the start.
+
+Animal Crossing: New Leaf plays its museum's music as a stream and a sequence together. The
+sequence holds a base and three layers. Each part of the museum plays the base with one layer,
+or the stream alone. The game never plays all three layers at once. Given the game's sound
+archive (the USA release), citrusf2 plays the base and the layer that the game plays by
+default. In the MIDI file, the other two layers' tracks keep their notes at CC11 0.
+
+New Leaf's café job music, SEQ_BGM_IND_CAFEARBEIT, starts with track 7 muted. The café unmutes
+it at an event of the job. citrusf2 plays the start, with track 7 at CC11 0. It also writes
+SEQ_BGM_IND_CAFEARBEIT_track_7 for the state after the event. Each of DJ K.K.'s songs waits at
+its start for a value that the game writes. The value says whether the song plays an intro
+first. citrusf2 starts each song and interlude with the game's value. Two of the interludes,
+SEQ_BGM_DJ_HS_MURAMELO and SEQ_BGM_DJ_FC_MURAMELO, play the town's tune. The game plays the tune
+that the player's save holds. citrusf2 plays the first of the game's four default tunes instead,
+in the key of most of DJ K.K.'s songs.
+
+New Leaf and Animal Crossing: Happy Home Designer play a town's tune one note at a time. Each
+note starts one of 417 SE_MELODY_ sounds again, such as a villager's voice or a door's chime.
+Given the sound archive of either game (New Leaf's USA release, or either USA release of Happy
+Home Designer), citrusf2 plays each of these sounds once, at the tune's C, in the key that the
+game gives the sound. SE_MELODY_TRAIN_ANNOUNCE plays the first note of the train's tune. The
+game stops each note after a length that the sound gives. citrusf2 holds the note for the length
+that the sequence gives it.
+
+Both games count down in a variable as channel 12's show on the TV plays. citrusf2 starts
+SE_TV_12_RUN at the count of the run's start. The game stops the run as the count falls below
+80. citrusf2 plays it on.
+
+Tomodachi Life plays the music of a Mii's apartment in one of several arrangements. Each
+arrangement goes with a state of the Mii, and the game mutes the tracks of the others. Given the
+game's sound archive (the USA release), citrusf2 plays the two pieces of that music in the
+arrangement that the game plays when none of those states applies. It also writes a file for
+each other state, such as BGM_MANSION_AND_ROOM_track_15. In the MIDI files, the other tracks
+keep their notes at CC11 0. A Mii's guitar, SE_MII_PLAY_GUITAR_S, _M and _L, plays in the chord
+that the apartment's music sets. citrusf2 plays it in the music's first chord.
+
+Super Mario 3D Land plays a melody as the player collects the notes of a trail. Each note plays
+the melody's next beat. When the next note comes late, the melody waits for it. Given the game's
+sound archive (the USA release), citrusf2 plays the seven melodies, such as SS_NOTE_OBJ_CHIKA, as
+they sound when the player collects every note in time: as written, at their tempo. With each
+note, the game also sets the melody's tempo to between 0.4 and 2 times the written one. citrusf2
+keeps the written tempo. The game plays the melodies and the Toad House gift fanfares more
+quietly than the archive says. citrusf2 plays them at the game's level. Some of the game's
+effects change pitch with the game's state. The red coins' notes rise as the player collects
+them, and the note blocks play in the key of the music. citrusf2 plays nine of these effects at
+the pitch of their first play. The game gives Luigi his voice by playing Mario's voice sequences
+with Luigi's banks. citrusf2 writes each of those sequences once more with Luigi's voice, as a
+file named with `_Luigi`, such as SePvJumpS_Luigi.
+
+Mario Kart 7 plays a beat sequence beside the streamed music of three courses: Music Park,
+Airship Fortress and Waluigi Pinball. The beat plays at the tempo of the stream. Music Park's
+beat holds four instruments' parts. The game mutes all four as the race starts. Each of the
+course's instrument roads unmutes one of them. An area of the course unmutes the fourth. The
+beats lie in the archive's group files (`.bcgrp`, in the folder `extData`). Keep them beside
+the archive. Given the game's sound archive (the USA release, revision 1), citrusf2 plays each
+beat at the tempo of its stream. It plays Music Park's beat as the race starts. It also writes a
+file for each other state, such as SEQ_SYNC_BEAT_MUSIC_PARK_track_0 and _final_lap. The beats
+of Airship Fortress (SEQ_SYNC_BEAT_KILLER_SHIP) and Waluigi Pinball get a file for the final lap
+as well. The other 29 courses share one beat, SEQ_SYNC_BEAT_120, in the archive itself. citrusf2
+plays it at Toad Circuit's tempo, and writes a file for each other course and each final lap, such
+as SEQ_SYNC_BEAT_120_glide_lake and _glide_lake_final_lap. Each beat's drum loop sounds only while
+the player leads the race, and it grows louder as the lead grows. citrusf2 plays the loop at full
+volume. In the MIDI files, the muted tracks keep their notes at CC11 0. Some of the game's
+effects take a value as they start. citrusf2 starts 22 of them with a value that the game gives
+them, such as SE_KT_FALL_WATER with the value for the player's kart. Each driver's horn takes the
+kart's body. citrusf2 plays the horns of the first body.
+
+Mighty Gunvolt Burst plays each piece of its music as five sequences at once. Each sequence plays
+one channel of the NES's sound chip. Their labels share a name and end in `_DPCM`, `_NOISE`,
+`_P1`, `_P2` and `_TRI`. citrusf2 converts each piece to one MIDI file, one SoundFont and one set
+of SFZ files. The files take the piece's name, such as SEQ_MCR_BGM_01. The MIDI tracks and the
+SFZ files take the names of the piece's tracks, such as "SEQ_MCR_BGM_01_P1 Track 1". The
+game's sound archive keeps every sequence in its 17 group files (`.bcgrp`). Keep them beside
+the archive.
+
+StreetPass Mii Plaza and four of its add-on games change tracks, variables or tempo too. Given
+their sound archives (the Plaza's update v14.6.0 and the USA add-on content v0.2.0), citrusf2
+plays these sounds in the game's states:
+
+- **The Plaza's SEQ_USAGI.** The Plaza plays one group of its tracks for each of five states.
+  citrusf2 plays the state that the Plaza sets as the piece starts, NORMAL. It also writes a file
+  for each other state: SEQ_USAGI_intro, _silence, _tohoho and _happy.
+- **The Plaza's music after a new Mii's jingle.** Each of the seven pieces named
+  BGM_MAIN_Mii_..._From_New_Mii waits for the jingle's next beat, which the jingle counts in a
+  global variable. citrusf2 changes the variable in the piece's second sound frame. The piece
+  then plays at once, as it plays after the jingle in the game. The Plaza's European system
+  title plays the seven pieces the same way without the update. citrusf2 plays them the same
+  way from the system title's archive.
+- **The Plaza's quick mode.** In quick mode, the Plaza plays its music higher and faster: at a
+  pitch of 1.25 times the frequency, and a tempo 1.1625 times as fast. citrusf2 also writes each
+  of the 16 pieces in that state, such as BGM_MAIN_Mii_MAX_quick. The MIDI file tunes every
+  channel at tick 0, by RPN 2 (coarse tuning) and RPN 1 (fine tuning) of the MIDI specification.
+  sfizz 1.2.3 ignores both, so these files play at the original pitch there.
+- **Ninja Launcher's battle music.** In the last 10 seconds of a battle, the game plays the piece
+  1.3 times as fast. citrusf2 also writes each of the eight battle pieces in that state, such as
+  SEQ_BGM_BATTLE1_hurry.
+- **Mii Force's game-over music.** SD_BGM_D01 loops until the game tells it to end. In the
+  game-over scene the piece plays its ending once the boss has finished speaking. citrusf2 writes
+  the loop, and also SD_BGM_D01_ending and SD_BGM_D01_ending_early. The first plays one pass and
+  the ending, and the second half a pass and the ending in the other key. The piece reaches
+  either ending in the game, by how long the player takes.
+- **Ultimate Angler's music.** Tracks 14 and 15 of each piece hold one part, mixed once for the
+  speakers and once for headphones. The game plays the mix for the output in use. citrusf2
+  plays the speakers' mix. One piece also holds two arrangements, and the game plays one at a
+  time. citrusf2 plays the one that the piece starts with.
+- **Ultimate Angler's reeling music.** Each of the four reeling pieces holds a layer that the
+  game plays only once the line's tension reaches level 2. citrusf2 plays each piece as it
+  starts, without the layer. It also writes the piece with the layer, such as
+  SEQ_BGM_REELING_NORMAL_tension_2.
+- **Ultimate Angler's ending.** As the ending's cutscene goes on, the game moves its music
+  through five groups of tracks. When each change comes depends on the dialog. The player can
+  speed the dialog up with a button. citrusf2 plays SEQ_BGM_ED2_DEMO with the first group. It
+  also writes a file for each later group, in the game's order: SEQ_BGM_ED2_DEMO_step_1 to
+  SEQ_BGM_ED2_DEMO_step_4.
+- **Ultimate Angler's home ambience.** The game plays one group of its tracks at a time.
+  citrusf2 plays SE_ENV_HOME_CROSS with the group that it starts with, tracks 0 and 1. It
+  also writes a file for each other group, named by its tracks, such as
+  SE_ENV_HOME_CROSS_tracks_2_to_4.
+- **Ultimate Angler's cruiser.** The two jump-in sounds take another pitch for each Mii that has
+  jumped in. citrusf2 plays the first jump-in. It also writes a file for each later one, such as
+  SE_ANIM_CRUISER_JUMP_IN_jump_2.
+- **Ultimate Angler's fever.** SE_FEVER_PULL_2 plays higher with each pull of a fever, up to the
+  21st. citrusf2 plays the first pull. It also writes a file for each later one, such as
+  SE_FEVER_PULL_2_pull_2.
+- **Ultimate Angler's crowd.** The four SE_MIIS_VOICE effects pick their voices by how many Miis
+  of three kinds watch. citrusf2 plays the fullest crowd. It also writes a file for each of the
+  26 other crowds that the game can give, such as SE_MIIS_VOICE_crowd_a2_b1. The letters name
+  the kinds, and the numbers their levels: 1 Mii, 2 to 6, or 7 to 10.
+- **Two of Ultimate Angler's catch sounds.** SE_CATCHED_092 and SE_CATCHED_120 draw a random
+  number as they start. The game plays SE_CATCHED_092 on about one draw in five and
+  SE_CATCHED_120 on one in three. It plays a quieter sound on some of the other draws and nothing
+  on the rest. citrusf2 starts each with a state of the random generator that plays the sound.
+- **Flower Town's atelier music.** The game plays one group of tracks for each state of the
+  atelier. citrusf2 plays the group of the state that the game sets most often.
+- **Flower Town's colour wheel.** SE_COLOR_WHEEL_LIGHT_2 plays one note after
+  SE_COLOR_WHEEL_LIGHT, and another note the next time. citrusf2 plays the first note. It also
+  writes SE_COLOR_WHEEL_LIGHT_2_second with the other one.
+- **Flower Town's watering music.** As the Mii walks, the game turns the whole piece down step by
+  step, to silence after 30 steps. citrusf2 plays the pieces at full volume, as they start.
+- **The system titles' music.** System Settings and the Activity Log each play three pieces from
+  one sequence. Each piece keeps a group of the sequence's tracks, and citrusf2 plays that group.
+  Mii Maker's first screen plays tracks 0 to 7 of its music, and citrusf2 plays those. Two
+  later states play other mixes of it, with some tracks at lower volumes. citrusf2 writes each
+  mix as a file of its own: MEDIT_BGM_FACE_tracks_8_9 and MEDIT_BGM_FACE_tracks_8_to_10.
+
+In the MIDI files, the other tracks keep their notes at CC11 0.
+
+Any other archive plays every track of every sequence.
 
 ### MIDI
 
@@ -255,7 +443,7 @@ Regions match the SoundFont, with these differences:
   The DSP does the same. Other regions use sfizz's default, a cubic interpolation. Cubic
   interpolation is the closest sfizz has to the DSP's polyphase filter.
 
-Five sfizz 1.2.3 quirks affect playback:
+Six sfizz 1.2.3 quirks affect playback:
 
 - **Decays and releases.** sfizz ends them sooner than the documentation's curve. Over the
   specified time, sfizz falls by a factor of e^-9: 78.17 dB. Where the game has fallen 40 dB,
@@ -273,6 +461,8 @@ Five sfizz 1.2.3 quirks affect playback:
 - **Repeated keys.** A key group in sfizz never cuts a note of the same key as the new note. The
   documentation's `off_by` cuts it. A key of a group struck again therefore leaves the earlier
   note playing in sfizz. The game fades that note out at release rate 126.
+- **Short decays and releases.** sfizz makes each decay and release last at least 6 ms. The
+  documentation sets no such floor. A shorter time plays over 6 ms.
 
 The opcodes follow their documentation at sfzformat.com, with these exceptions:
 
@@ -334,15 +524,36 @@ in MIDI, SoundFont or SFZ:
   top octave. Its slope is twice as steep. Cutoffs are fitted by ntdlib's
   `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted; two active
   low-passes use the lower cutoff. SFZ has all these filters.
+- **Track volumes from the game's code.** A game's code can mute, silence or turn down some
+  tracks of a sequence as it plays. Some games change them as the game goes on. citrusf2 plays
+  every track at the sequence's volumes. The exceptions are Island Tour's menu music and two of
+  its minigame pieces, Ocarina of Time 3D's Lon Lon Ranch music, three jingles of WarioWare Gold,
+  Animal Crossing: New Leaf's museum and café music, two pieces of Tomodachi Life, Mario Kart 7's
+  Music Park beat, StreetPass Mii Plaza's SEQ_USAGI, some music of Ultimate Angler and Flower
+  Town, and the music of System Settings, the Activity Log and Mii Maker (see "Sequence
+  playback"). Those play in one of the game's states. Island Tour's menu music and the two
+  minigame pieces, New Leaf's café music, the two pieces of Tomodachi Life, the Music Park beat,
+  SEQ_USAGI, Mii Maker's music and Ultimate Angler's reeling music, ending and home ambience also
+  get a file for each other set of tracks. No file changes its tracks over time.
 - **Routing.** Surround pan and main send are omitted. Pan LFO is omitted from SoundFont but
   included in SFZ. A game's code puts the effects on effect buses A and B. A send to a bus
   without an effect reaches nothing. By default, citrusf2 reports the sends and keeps CC91 and
   CC93 at 0. A synth's default sends then add no reverb or chorus either. WarioWare Gold and The
   Legend of Zelda: Ocarina of Time 3D put a reverb on bus A. Pokémon X puts one there in the
-  field. For these games, `--reverb` writes send A as CC91. The synth's reverb isn't the game's.
+  field. StreetPass Mii Plaza puts one there too. So do five of its add-on games: Ultimate
+  Angler, Flower Town, Monster Manor, Feed Mii and Ninja Launcher. Animal Crossing: New Leaf
+  puts one there in DJ K.K.'s club. The game sends his music to it at 0.4 on top of each track's
+  send. citrusf2 adds the same send. For these games, `--reverb` writes send A as CC91. The
+  synth's reverb isn't the game's. Warrior's Way puts its reverb on bus B. Mii Force, Slot Car
+  Rivals, Market Crashers and Battleground Z put a reverb and a delay on bus B. Mii Trek puts no
+  effect on either bus.
   The Legend of Zelda: Majora's Mask 3D puts nothing on bus A. Some games pick their effects for
-  each scene. Send B stays out. CC93 is a chorus send, and MIDI has no controller for the delays
-  that some games put on bus B.
+  each scene. Animal Crossing: Happy Home Designer puts a reverb or a delay on bus A, by the room's
+  ambient sound. The game sends the room's music to it at 0.38. The conversions play a room with
+  the default ambient sound, "silence". That sound puts no effect on the bus. In a dream, New Leaf
+  puts a delay on bus A in the town and its shops. The conversions play each sequence as it sounds
+  outside a dream. Send B stays out. CC93 is a chorus send. MIDI has no controller for the delays
+  that some games put on bus A or B.
 - **Volume limits.** Archive sound volume, track volume, second/main volume and region volume
   can reach 255. MIDI CC7 holds track volume up to 127. CC11 holds the rest, also up to 127. If
   necessary, all CC11 values are scaled equally. The tracks keep their balance, and the
@@ -478,7 +689,8 @@ Other checks and tools:
   filter tables from a locally supplied Pokémon X `code.bin`. Requires Python 3 and numpy.
 
 The archive test and the filter tables require game files supplied separately. Neither citrusf2
-nor ntdlib distributes them. Normal conversion requires only the input `.bcsar` archive.
+nor ntdlib distributes them. Normal conversion requires only the input `.bcsar` archive. Some
+games also keep sequences in group files (`.bcgrp`). Keep those beside the archive.
 
 ## Licence
 

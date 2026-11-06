@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.20)
 # citrusf2 --version reports this version. The file properties of the Windows program and the Info.plist of the macOS
 # app show it too. A release changes it here and adds its notes in docs/release-notes/.
-project(citrusf2 VERSION 1.0.8 LANGUAGES CXX)
+project(citrusf2 VERSION 1.1.0 LANGUAGES CXX)
 
 # The submodules: seqlib writes the MIDI, SoundFont and SFZ files. ntdlib holds the Nintendo code that citrusf2 shares
 # with the other converters and the players: the archive reader, the performer, the conversion and the command-line
@@ -24,7 +24,7 @@ xsflib_add_libraries(seqlib xsflib ntdlib)
 add_library(citrusf2_core INTERFACE)
 target_link_libraries(citrusf2_core INTERFACE seqlib::seqlib ntdlib::sar ntdlib::sequence_export)
 
-add_executable(citrusf2 src/main.cpp)
+add_executable(citrusf2 src/main.cpp src/pieces.cpp src/profiles.cpp)
 target_link_libraries(citrusf2 PRIVATE citrusf2_core)
 xsflib_add_version(citrusf2 VERSION ${PROJECT_VERSION} DEFINE CITRUSF2_VERSION
                    DESCRIPTION "Nintendo 3DS sound archive converter" PRODUCT citrusf2
