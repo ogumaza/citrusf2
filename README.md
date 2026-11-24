@@ -21,8 +21,8 @@ citrusf2 [options] <archive.bcsar> [<archive.bcsar> ...]
                  with N voices (the game has 24 unless it sets another
                  count). The result only approximates the game.
   --voices off   keep every note (default)
-  --reverb       write effect send A as CC91 (reverb), for games that put a
-                 reverb on bus A
+  --reverb       write effect send A as CC91 (reverb), for a game that puts a
+                 reverb on bus A and that citrusf2 has no profile of
   --list         list sequences without converting
   --quiet        print errors only
   --version      show the version
@@ -41,10 +41,12 @@ A new note of lower priority than every sounding note is dropped. nw::snd has 24
 game sets another count. Pokémon X's code sets 23. The result only approximates the game.
 citrusf2 doesn't model the voices that the console's DSP drops.
 
-By default, CC91 stays at 0. `--reverb` writes each track's send to effect bus A as CC91, the
-synth's reverb send. Use it for a game that puts a reverb on bus A (see "Routing" under
-[Differences from the game](#differences-from-the-game)). A conversion with `--reverb` marks the
-same loops as one without it. Only the CC91 events differ.
+For the games known to put a reverb on effect bus A, each track's send to bus A becomes CC91,
+the synth's reverb send (see "Routing" under
+[Differences from the game](#differences-from-the-game)). Elsewhere CC91 stays at 0. `--reverb`
+writes the send as CC91 for a game that puts a reverb on bus A and whose effects citrusf2 has no
+profile of. A conversion with the send marks the same loops as one with CC91 at 0. Only the CC91
+events differ.
 
 Files use the sequence names, with adjustments for Windows: forbidden characters and trailing
 dots or spaces become `_`, and reserved device names such as `CON` get an added `_`. If names
@@ -88,7 +90,7 @@ The performer follows Pokémon X's nw::snd player, including:
   finish. Note ends are calculated frame by frame. The DSP starts a voice one frame after
   note-on and reports wave completion one frame after the wave ends. One-shot duration follows
   the pitch from the note's sweep, track bend and pitch LFO, recalculated each frame. Envelopes
-  start at -90.4 dB and first advance at frame end; notes released or stopped before then are
+  start at -90.4 dB and first advance at frame end. Notes released or stopped before then are
   inaudible and produce no MIDI note.
 - Tick scheduling in thousandths of CPU cycles, in single precision. The game's rounding
   occasionally places a tick in an adjacent sound frame.
@@ -122,21 +124,20 @@ The performer follows Pokémon X's nw::snd player, including:
   gives back there when the loop ends with another value. Without it, a player that loops on
   the markers would keep the loop end's value. `--loops N` plays the marked pass N times. The
   passes before it play once, ahead of the loops. A file whose markers sit on the second pass
-  therefore holds N + 1 passes of the loop's music.
+  therefore contains N + 1 passes of the loop's music.
 
 Short loops, such as repeating sound effects, run until the MIDI is at least 10 seconds long.
-Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks
-or more that its track waits out counts as held. Games use such notes, minutes long at a
-typical tempo, for sounds they stop themselves. That also
-includes a main loop longer than 10 seconds that ends with more than 10 seconds of no change
-and sounds only endless notes held with tie or mono. The game's next pass usually continues
-those notes. A sequence that finishes naturally ends with its last sound, including release.
-A note counts as below hearing once its envelope has decayed 40 dB. A note without a length,
-such as a tie, ends where its envelope has decayed 60 dB. If the sustain level stays above that,
-the note ends at 40 dB down. In the game, the channel goes on in silence.
-Performances stop after 15 minutes; one that has been silent for more than 10 seconds by then
-ends with its last sound too. Tempo or timebase 0 stops sequence timing while notes keep
-playing; those notes finish normally, or use the same 10-second limit if held indefinitely.
+Indefinitely held sounds are capped at 10 seconds after their last change. A note of 9,600 ticks or
+more that its track waits out counts as held. Games use such notes, minutes long at a typical tempo,
+for sounds they stop themselves. The cap also covers a main loop longer than 10 seconds that ends
+with more than 10 seconds of no change and sounds only endless notes held with tie or mono. The
+game's next pass usually continues those notes. A sequence that finishes naturally ends with its
+last sound, including release. A note counts as below hearing once its envelope has decayed 40 dB. A
+note without a length, such as a tie, ends where its envelope has decayed 60 dB. If the sustain
+level stays above that, the note ends at 40 dB down. In the game, the channel goes on in silence.
+Performances stop after 15 minutes. One that has been silent for more than 10 seconds by then ends
+with its last sound too. Tempo or timebase 0 stops sequence timing while notes keep playing. Those
+notes finish normally, or use the same 10-second limit if held indefinitely.
 
 Mario Party: Island Tour plays its menu music in four layers. The main menu plays four tracks
 of the piece. Deeper menus add tracks. The rule and minigame screens play all sixteen. Given the
@@ -154,7 +155,7 @@ it at full speed, and it writes _second and _third for its two other layers.
 Mario Party: Star Rush plays the music of one minigame from one sequence, SQ_BGM_MGN708. The
 minigame writes a variable that picks the pattern each pass of the loop plays. Another variable
 moves the music on from the first set of four patterns to the second. Given the sound archive
-that holds the piece (the USA release), citrusf2 plays SQ_BGM_MGN708 as the minigame starts it.
+that contains the piece (the USA release), citrusf2 plays SQ_BGM_MGN708 as the minigame starts it.
 It also writes a file for each pattern of the first set, in the order in which the minigame
 plays them, such as SQ_BGM_MGN708_otehon. SQ_BGM_MGN708_B_FIRST starts the second set with one
 of its patterns. citrusf2 writes it once more with each of the other three, such as
@@ -174,7 +175,7 @@ second arrangement's tracks keep their notes at CC11 0. The game fades those tra
 jingle's first 49 ms. citrusf2 silences them from the start.
 
 Animal Crossing: New Leaf plays its museum's music as a stream and a sequence together. The
-sequence holds a base and three layers. Each part of the museum plays the base with one layer,
+sequence contains a base and three layers. Each part of the museum plays the base with one layer,
 or the stream alone. The game never plays all three layers at once. Given the game's sound
 archive (the USA release), citrusf2 plays the base and the layer that the game plays by
 default. In the MIDI file, the other two layers' tracks keep their notes at CC11 0.
@@ -185,7 +186,7 @@ SEQ_BGM_IND_CAFEARBEIT_track_7 for the state after the event. Each of DJ K.K.'s 
 its start for a value that the game writes. The value says whether the song plays an intro
 first. citrusf2 starts each song and interlude with the game's value. Two of the interludes,
 SEQ_BGM_DJ_HS_MURAMELO and SEQ_BGM_DJ_FC_MURAMELO, play the town's tune. The game plays the tune
-that the player's save holds. citrusf2 plays the first of the game's four default tunes instead,
+stored in the player's save. citrusf2 plays the first of the game's four default tunes instead,
 in the key of most of DJ K.K.'s songs.
 
 New Leaf and Animal Crossing: Happy Home Designer play a town's tune one note at a time. Each
@@ -221,30 +222,30 @@ the pitch of their first play. The game gives Luigi his voice by playing Mario's
 with Luigi's banks. citrusf2 writes each of those sequences once more with Luigi's voice, as a
 file named with `_Luigi`, such as SePvJumpS_Luigi.
 
-Mario Kart 7 plays a beat sequence beside the streamed music of three courses: Music Park,
-Airship Fortress and Waluigi Pinball. The beat plays at the tempo of the stream. Music Park's
-beat holds four instruments' parts. The game mutes all four as the race starts. Each of the
-course's instrument roads unmutes one of them. An area of the course unmutes the fourth. The
-beats lie in the archive's group files (`.bcgrp`, in the folder `extData`). Keep them beside
-the archive. Given the game's sound archive (the USA release, revision 1), citrusf2 plays each
-beat at the tempo of its stream. It plays Music Park's beat as the race starts. It also writes a
-file for each other state, such as SEQ_SYNC_BEAT_MUSIC_PARK_track_0 and _final_lap. The beats
-of Airship Fortress (SEQ_SYNC_BEAT_KILLER_SHIP) and Waluigi Pinball get a file for the final lap
-as well. The other 29 courses share one beat, SEQ_SYNC_BEAT_120, in the archive itself. citrusf2
-plays it at Toad Circuit's tempo, and writes a file for each other course and each final lap, such
-as SEQ_SYNC_BEAT_120_glide_lake and _glide_lake_final_lap. Each beat's drum loop sounds only while
-the player leads the race, and it grows louder as the lead grows. citrusf2 plays the loop at full
-volume. In the MIDI files, the muted tracks keep their notes at CC11 0. Some of the game's
-effects take a value as they start. citrusf2 starts 22 of them with a value that the game gives
-them, such as SE_KT_FALL_WATER with the value for the player's kart. Each driver's horn takes the
-kart's body. citrusf2 plays the horns of the first body.
+Mario Kart 7 plays a beat sequence beside the streamed music of three courses: Music Park, Airship
+Fortress and Waluigi Pinball. The beat plays at the tempo of the stream. The beat of Music Park
+contains the parts of four instruments. The game mutes all four as the race starts. Each of the
+course's instrument roads unmutes one of them. An area of the course unmutes the fourth. The beats
+are in the archive's group files (`.bcgrp`, in the folder `extData`). Keep them beside the archive.
+Given the game's sound archive (the USA release, revision 1), citrusf2 plays each beat at the tempo
+of its stream. It plays Music Park's beat as the race starts. It also writes a file for each other
+state, such as SEQ_SYNC_BEAT_MUSIC_PARK_track_0 and _final_lap. The beats of Airship Fortress
+(SEQ_SYNC_BEAT_KILLER_SHIP) and Waluigi Pinball get a file for the final lap as well. The other 29
+courses share one beat, SEQ_SYNC_BEAT_120, in the archive itself. citrusf2 plays it at Toad
+Circuit's tempo, and writes a file for each other course and each final lap, such as
+SEQ_SYNC_BEAT_120_glide_lake and _glide_lake_final_lap. Each beat's drum loop sounds only while the
+player leads the race, and it grows louder as the lead grows. citrusf2 plays the loop at full
+volume. In the MIDI files, the muted tracks keep their notes at CC11 0. Some of the game's effects
+take a value as they start. citrusf2 starts 22 of them with a value that the game gives them, such
+as SE_KT_FALL_WATER with the value for the player's kart. The horn of each driver depends on the
+body of the kart. citrusf2 plays the horns of the first body.
 
 Mighty Gunvolt Burst plays each piece of its music as five sequences at once. Each sequence plays
 one channel of the NES's sound chip. Their labels share a name and end in `_DPCM`, `_NOISE`,
 `_P1`, `_P2` and `_TRI`. citrusf2 converts each piece to one MIDI file, one SoundFont and one set
 of SFZ files. The files take the piece's name, such as SEQ_MCR_BGM_01. The MIDI tracks and the
-SFZ files take the names of the piece's tracks, such as "SEQ_MCR_BGM_01_P1 Track 1". The
-game's sound archive keeps every sequence in its 17 group files (`.bcgrp`). Keep them beside
+SFZ files take the names of the piece's tracks, such as "SEQ_MCR_BGM_01_P1 Track 1". The game
+keeps every sequence in 17 group files (`.bcgrp`) outside its sound archive. Keep them beside
 the archive.
 
 StreetPass Mii Plaza and four of its add-on games change tracks, variables or tempo too. Given
@@ -255,16 +256,23 @@ plays these sounds in the game's states:
   citrusf2 plays the state that the Plaza sets as the piece starts, NORMAL. It also writes a file
   for each other state: SEQ_USAGI_intro, _silence, _tohoho and _happy.
 - **The Plaza's music after a new Mii's jingle.** Each of the seven pieces named
-  BGM_MAIN_Mii_..._From_New_Mii waits for the jingle's next beat, which the jingle counts in a
-  global variable. citrusf2 changes the variable in the piece's second sound frame. The piece
-  then plays at once, as it plays after the jingle in the game. The Plaza's European system
-  title plays the seven pieces the same way without the update. citrusf2 plays them the same
-  way from the system title's archive.
+  BGM_MAIN_Mii_..._From_New_Mii waits for the next beat of the jingle. The jingle counts its beats
+  in a global variable. citrusf2 changes the variable in the piece's second sound frame. The piece
+  then plays at once. That's how it plays after the jingle in the game. The Plaza's European system
+  title plays the seven pieces the same way without the update. citrusf2 plays them the same way
+  from the system title's archive.
 - **The Plaza's quick mode.** In quick mode, the Plaza plays its music higher and faster: at a
   pitch of 1.25 times the frequency, and a tempo 1.1625 times as fast. citrusf2 also writes each
   of the 16 pieces in that state, such as BGM_MAIN_Mii_MAX_quick. The MIDI file tunes every
   channel at tick 0, by RPN 2 (coarse tuning) and RPN 1 (fine tuning) of the MIDI specification.
-  sfizz 1.2.3 ignores both, so these files play at the original pitch there.
+  sfizz 1.2.3 ignores both. These files play at the original pitch there.
+- **Find Mii II's walls.** In a room whose foe is a wall of fire or poison, the Plaza plays the
+  room's battle piece quieter and muffled until a hero breaks the wall. citrusf2 also writes the two
+  battle pieces in that state: BGM_DEN2_Battle01_wall and BGM_DEN2_Battle02_wall. The low-pass of
+  the game becomes the low-pass of each track, as a 0xd8 command would set it: a filter on each
+  preset of the SoundFont, and CC103 for the SFZ files. Behind a wall of ice, the pieces play
+  quieter still, with the same low-pass. That state differs only in level, and citrusf2 writes no
+  file for it.
 - **Ninja Launcher's battle music.** In the last 10 seconds of a battle, the game plays the piece
   1.3 times as fast. citrusf2 also writes each of the eight battle pieces in that state, such as
   SEQ_BGM_BATTLE1_hurry.
@@ -273,11 +281,11 @@ plays these sounds in the game's states:
   the loop, and also SD_BGM_D01_ending and SD_BGM_D01_ending_early. The first plays one pass and
   the ending, and the second half a pass and the ending in the other key. The piece reaches
   either ending in the game, by how long the player takes.
-- **Ultimate Angler's music.** Tracks 14 and 15 of each piece hold one part, mixed once for the
-  speakers and once for headphones. The game plays the mix for the output in use. citrusf2
-  plays the speakers' mix. One piece also holds two arrangements, and the game plays one at a
-  time. citrusf2 plays the one that the piece starts with.
-- **Ultimate Angler's reeling music.** Each of the four reeling pieces holds a layer that the
+- **Ultimate Angler's music.** Tracks 14 and 15 of each piece contain one part, mixed once for
+  the speakers and once for headphones. The game plays the mix for the output in use. citrusf2
+  plays the mix for the speakers. One piece also contains two arrangements, and the game plays
+  one at a time. citrusf2 plays the one that the piece starts with.
+- **Ultimate Angler's reeling music.** Each of the four reeling pieces contains a layer that the
   game plays only once the line's tension reaches level 2. citrusf2 plays each piece as it
   starts, without the layer. It also writes the piece with the layer, such as
   SEQ_BGM_REELING_NORMAL_tension_2.
@@ -310,12 +318,16 @@ plays these sounds in the game's states:
   SE_COLOR_WHEEL_LIGHT, and another note the next time. citrusf2 plays the first note. It also
   writes SE_COLOR_WHEEL_LIGHT_2_second with the other one.
 - **Flower Town's watering music.** As the Mii walks, the game turns the whole piece down step by
-  step, to silence after 30 steps. citrusf2 plays the pieces at full volume, as they start.
-- **The system titles' music.** System Settings and the Activity Log each play three pieces from
-  one sequence. Each piece keeps a group of the sequence's tracks, and citrusf2 plays that group.
-  Mii Maker's first screen plays tracks 0 to 7 of its music, and citrusf2 plays those. Two
-  later states play other mixes of it, with some tracks at lower volumes. citrusf2 writes each
-  mix as a file of its own: MEDIT_BGM_FACE_tracks_8_9 and MEDIT_BGM_FACE_tracks_8_to_10.
+  step, to silence after 30 steps. citrusf2 plays the pieces as they start, at full volume.
+
+Three system titles of the console set the tracks of their music too: System Settings, the
+Activity Log and Mii Maker. Given the sound archives of their European releases, citrusf2 plays
+their music as the titles do. System Settings and the Activity Log each play three pieces from
+one sequence. Each piece plays one group of the tracks of that sequence, and citrusf2 plays each
+piece with its group. Mii Maker's first screen plays tracks 0 to 7 of its music, and citrusf2
+plays those. Two later states play other mixes of it, with some tracks at lower volumes.
+citrusf2 writes each mix as a file of its own: MEDIT_BGM_FACE_tracks_8_9 and
+MEDIT_BGM_FACE_tracks_8_to_10.
 
 In the MIDI files, the other tracks keep their notes at CC11 0.
 
@@ -331,30 +343,30 @@ MIDI output preserves tempo changes and uses at least 7680 ticks per quarter not
 integer number of MIDI ticks per sequence tick. The game processes ticks in 4.89 ms sound
 frames, and the DSP applies their changes at the next frame boundary. citrusf2 places events at
 the start of the frame containing each tick, rounded to the nearest MIDI tick. This shifts the
-whole sequence one frame earlier while preserving event spacing; at 120 BPM, rounding error is
+whole sequence one frame earlier while preserving event spacing. At 120 BPM, rounding error is
 at most 1/30 ms. Events never cross a loop marker when moved, and the loop keeps its contents. A
 sweep or portamento given a portamento time moves on in every frame, between ticks too. The
 sweep's pitch bends go at the start of each frame. A sweep goes on after its track closes, while
 the note's release sounds, and after the sequence's last tick, at its tempo.
 
-nw::snd applies track settings to notes at frame end. A note therefore starts with its tick's
-final settings, and MIDI controller changes are written before notes at the same tick.
+nw::snd applies track settings to notes at frame end. A note therefore starts with the final
+settings of its tick, and MIDI controller changes are written before notes at the same tick.
 
 | Game setting | MIDI output |
 |---|---|
 | Track volume, up to 127 | CC7 |
-| Track volume above 127 × second volume × main volume × sound volume, plus legato velocity changes without region volume | CC11; as in nw::snd, CC7 and CC11 both act squared. Values are scaled for sequences exceeding MIDI's range (see [Differences from the game](#differences-from-the-game)). |
+| Track volume above 127 × second volume × main volume × sound volume, plus legato velocity changes without region volume | CC11. As in nw::snd, CC7 and CC11 both act squared. Values are scaled for sequences exceeding MIDI's range (see [Differences from the game](#differences-from-the-game)). |
 | Track pan | CC10, mapped to the SoundFont pan law |
 | Pitch bend, sweep, portamento and legato key changes | Pitch bend, with RPN 0 range set per channel |
 | LFO depth | CC1 = depth / 2, mapped to vibrato or tremolo in the SoundFont |
-| Effect sends A and B | Reported, and CC91 and CC93 stay at 0. With `--reverb`, CC91 takes send A (see "Routing" under [Differences from the game](#differences-from-the-game)) |
+| Effect sends A and B | Reported. Send A becomes CC91 where the game puts a reverb on bus A. CC91 stays at 0 elsewhere. CC93 stays at 0 (see "Routing" under [Differences from the game](#differences-from-the-game)) |
 | Immediate track silence | CC120 |
 | Filters that change during sounding notes | CC102, mapped to SoundFont cutoff by a modulator |
-| Track low-pass (0xd8), for SFZ | CC103 = 64 minus the argument; values <= 6 mean off |
-| Biquad filter (0xb4/0xb5), for SFZ | CC104 = filter value; 0 means off |
+| Track low-pass (0xd8), for SFZ | CC103 = 64 minus the argument, once a start's low-pass is added to the argument. Values <= 6 mean off, and values from 64 up play the lowest cutoff |
+| Biquad filter (0xb4/0xb5), for SFZ | CC104 = filter value, where 0 means off |
 | Instrument and track envelope, LFO, initial pan and filter settings | Bank select (CC0) and program change |
 
-A MIDI channel can hold only one note per key. Repeated strikes that overlap, common in drums,
+A MIDI channel can play only one note per key. Repeated strikes that overlap, common in drums,
 get extra channels called layers, with matching controllers, up to the 16-channel limit.
 
 A MIDI channel has one set of controllers for all its notes. Each of the game's notes keeps its
@@ -374,7 +386,7 @@ regions become zones with:
 - Key and velocity ranges resolved by nw::snd's first-match rules.
 - The region's sample, root key, tuning, linear volume and pan.
 - Envelope parameters after track overrides, timed in 5 ms steps per 4.89 ms sound frame.
-  nw::snd's attack is exponential in decibels; the linear SoundFont attack is fitted to it at
+  nw::snd's attack is exponential in decibels. The linear SoundFont attack is fitted to it at
   0.55 of its duration. A note that the game releases during its attack gets a longer attack
   in a preset of its own. That attack reaches the game's level when the note is released, and
   the release starts from that level. SoundFont decays and releases fall 100 dB in 101.6 s at
@@ -392,14 +404,14 @@ regions become zones with:
 citrusf2 reads CSAR 2.x archives and embedded CSEQ, CBNK, CWAR and CWAV files. Supported wave
 encodings are PCM8, PCM16, DSP-ADPCM and IMA-ADPCM. Banks and wave archives stored only in CGRP
 groups are also supported. Groups can have wave archives of their own. Copies of a bank in
-different groups can then reference different files. citrusf2 uses the first group's copy; the
+different groups can then reference different files. citrusf2 uses the first group's copy. The
 copies play the same waves.
 
 ## SFZ files
 
 SoundFont has one two-pole low-pass filter per voice. It cannot reproduce the game's high-pass
 or band-pass presets and only approximates the one-pole track low-pass. SFZ supports all of
-these. For it, citrusf2 also writes:
+these. For SFZ players, citrusf2 also writes:
 
 - `sfz/<sequence>/Track <n>.sfz`: instruments for MIDI `Track <n>` and its layers, for each
   active sequence track.
@@ -413,7 +425,7 @@ is sfizz 1.2.
 Presets use program change, plus bank select (CC0) when a sequence has more than 128 presets.
 Regions match the SoundFont, with these differences:
 
-- **Filters.** sfizz's `lpf_1p` matches the track low-pass; `lpf_2p`, `hpf_2p` and `bpf_2p` match
+- **Filters.** sfizz's `lpf_1p` matches the track low-pass. `lpf_2p`, `hpf_2p` and `bpf_2p` match
   the biquad presets coefficient for coefficient at the DSP rate. When both filters are active,
   they run in series. CC103/CC104 and SFZ curves map track values to cutoff, resonance and gain,
   including changes during notes. An inactive low-pass stays at sfizz's maximum 20 kHz cutoff.
@@ -423,8 +435,8 @@ Regions match the SoundFont, with these differences:
   that its sound frame ends with. The game's notes do the same. Each track uses its first biquad
   type. Later types are omitted and reported.
 - **Envelopes.** As in the game, decays and releases fall linearly in dB. The documentation's
-  curve falls by a factor of e^-8 over the specified time. That's 69.49 dB. They use the game's
-  time for that fall. Attack uses the SoundFont fit described above.
+  curve falls by a factor of e^-8 over the specified time. That's 69.49 dB. The files give the
+  game's time for that fall. Attack uses the SoundFont fit described above.
 - **LFO.** SFZ uses a sine, matching the game, and supports pan LFO.
 - **Pan.** A curve maps CC10 to `(value - 64) / 64`. That's the SoundFont convention that the
   MIDI output uses.
@@ -450,10 +462,10 @@ Six sfizz 1.2.3 quirks affect playback:
   sfizz has fallen 45 dB.
 - **Sample rate.** Loading a file configures its filters for 48 kHz. A subsequent sample-rate
   change corrects them. At other rates, load files before setting the rate. `sfizz_render` and
-  `sfizz_jack` set it first; `sfizz_render` defaults to 48 kHz unless told otherwise.
+  `sfizz_jack` set it first. `sfizz_render` defaults to 48 kHz unless told otherwise.
 - **Streaming.** During offline rendering, streamed samples can fall silent after their
   preloaded portion. The files request full loading with `hint_ram_based=1`. sfizz prints
-  "Unsupported value for hint_stealing: 1" for this; the message is harmless.
+  "Unsupported value for hint_stealing: 1" for this. The message is harmless.
 - **Mono samples.** sfizz pans a mono sample by the sin/cos law and then raises both sides by
   3 dB. Every sample of the files is mono. Every region therefore plays 3.0 dB above the game's
   level, at every pan. The balance of the mix stays the same. Lowering sfizz's volume by 3 dB
@@ -468,8 +480,8 @@ The opcodes follow their documentation at sfzformat.com, with these exceptions:
 
 - **Long decays and releases.** A decay or release can last longer than the documented limit of
   100 s. The game's envelope falls that slowly. sfizz 1.2 plays the time as written.
-- **Loud regions.** A region's `volume` can lie above the documented limit of 6 dB. sfizz 1.2
-  takes volumes up to 48 dB.
+- **Loud regions.** A region's `volume` can be above the documented limit of 6 dB. sfizz 1.2
+  accepts volumes up to 48 dB.
 - **Low resonances.** The game's biquad presets have resonances down to -46 dB. The documented
   range starts at 0 dB. Each biquad track's curve reaches resonances below 0 dB. sfizz 1.2 plays
   those resonances.
@@ -522,7 +534,7 @@ in MIDI, SoundFont or SFZ:
 - **SoundFont filters.** The two-pole low-pass closely matches the biquad low-pass. For the
   one-pole track filter, the two-pole one passes slightly more just above cutoff and less in the
   top octave. Its slope is twice as steep. Cutoffs are fitted by ntdlib's
-  `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted; two active
+  `tools/sequence_export/filter_tables.py`. High-pass and band-pass are omitted. Two active
   low-passes use the lower cutoff. SFZ has all these filters.
 - **Track volumes from the game's code.** A game's code can mute, silence or turn down some
   tracks of a sequence as it plays. Some games change them as the game goes on. citrusf2 plays
@@ -537,17 +549,20 @@ in MIDI, SoundFont or SFZ:
   get a file for each other set of tracks. No file changes its tracks over time.
 - **Routing.** Surround pan and main send are omitted. Pan LFO is omitted from SoundFont but
   included in SFZ. A game's code puts the effects on effect buses A and B. A send to a bus
-  without an effect reaches nothing. By default, citrusf2 reports the sends and keeps CC91 and
-  CC93 at 0. A synth's default sends then add no reverb or chorus either. WarioWare Gold and The
-  Legend of Zelda: Ocarina of Time 3D put a reverb on bus A. Pokémon X puts one there in the
-  field. StreetPass Mii Plaza puts one there too. So do five of its add-on games: Ultimate
-  Angler, Flower Town, Monster Manor, Feed Mii and Ninja Launcher. Animal Crossing: New Leaf
+  without an effect reaches nothing. citrusf2 reports the sends. WarioWare Gold and The Legend
+  of Zelda: Ocarina of Time 3D put a reverb on bus A. Pokémon X puts one there in the field.
+  StreetPass Mii Plaza puts one there too. So do five of its add-on games: Ultimate Angler,
+  Flower Town, Monster Manor, Feed Mii and Ninja Launcher. System Settings, Mii Maker, the
+  Activity Log, Nintendo eShop and Swapnote put one there as well. Animal Crossing: New Leaf
   puts one there in DJ K.K.'s club. The game sends his music to it at 0.4 on top of each track's
-  send. citrusf2 adds the same send. For these games, `--reverb` writes send A as CC91. The
-  synth's reverb isn't the game's. Warrior's Way puts its reverb on bus B. Mii Force, Slot Car
-  Rivals, Market Crashers and Battleground Z put a reverb and a delay on bus B. Mii Trek puts no
-  effect on either bus.
-  The Legend of Zelda: Majora's Mask 3D puts nothing on bus A. Some games pick their effects for
+  send. citrusf2 adds the same send. For these games, citrusf2 writes send A as CC91. The
+  synth's reverb isn't the game's. The Plaza's sound test is the only place that plays Flower
+  Town's `SOUNDLIST_` pieces, and it plays them dry: their CC91 stays at 0. For every other game,
+  CC91 stays at 0, and a synth's default sends then add no reverb either. `--reverb` writes send
+  A as CC91 for a game that puts a reverb on bus A and whose effects citrusf2 has no profile of. Warrior's
+  Way puts its reverb on bus B. Mii Force, Slot Car Rivals, Market Crashers and Battleground Z
+  put a reverb and a delay on bus B. Mii Trek puts no effect on either bus. The Legend of Zelda:
+  Majora's Mask 3D puts nothing on bus A. Some games pick their effects for
   each scene. Animal Crossing: Happy Home Designer puts a reverb or a delay on bus A, by the room's
   ambient sound. The game sends the room's music to it at 0.38. The conversions play a room with
   the default ambient sound, "silence". That sound puts no effect on the bus. In a dream, New Leaf
@@ -555,24 +570,25 @@ in MIDI, SoundFont or SFZ:
   outside a dream. Send B stays out. CC93 is a chorus send. MIDI has no controller for the delays
   that some games put on bus A or B.
 - **Volume limits.** Archive sound volume, track volume, second/main volume and region volume
-  can reach 255. MIDI CC7 holds track volume up to 127. CC11 holds the rest, also up to 127. If
+  can reach 255. MIDI CC7 expresses track volume up to 127. CC11 expresses the rest, also up to
+  127. If
   necessary, all CC11 values are scaled equally. The tracks keep their balance, and the
   sequence's level falls. SoundFont also cannot amplify a sample: if any used region
   exceeds volume 127, every zone is attenuated equally to preserve region balance. citrusf2
   reports the reduction. SFZ restores the MIDI gain and keeps each region's original volume.
 - **DSP output.** The DSP resamples each voice through one of three filters. The voice's rate
-  decides which: the pitch times the wave's sample rate, over the output's 32,728 Hz. At a rate
-  of 1 or below, the filter loses about as much as the synths' interpolation. Above 1, and more
-  above 4/3, it cuts more of the highs. SoundFont zones and SFZ regions above a rate of 1
-  therefore have a low-pass whose cutoff tracks the key. ntdlib's
-  `tools/sequence_export/resampling_filters.py` fits the cutoffs to the DSP's filters. The
-  low-pass follows the rate at the zone's key, without bend, sweep or LFO. In the game, the
-  filter changes whenever a bend, sweep or LFO moves the rate across 1 or 4/3. A SoundFont
-  preset whose filter changes during notes has no such low-pass. citrusf2 reports its notes above
-  a rate of 1. In the SFZ files, a track that uses both the low-pass and the biquad has no
-  filter left for it. Notes there that start with the biquad on get no resampling low-pass.
-  Output limiting differs too. Region requests for linear or no interpolation are reported. The
-  SFZ files follow them, and SoundFont synths use their usual interpolation.
+  decides which: the pitch times the wave's sample rate, over the output's 32,728 Hz. At a rate of 1
+  or below, the filter loses about as much as the synths' interpolation. Above 1, and more above
+  4/3, it cuts more of the highs. SoundFont zones and SFZ regions above a rate of 1 therefore have a
+  low-pass whose cutoff tracks the key. ntdlib's `tools/sequence_export/resampling_filters.py` fits
+  the cutoffs to the DSP's filters. The low-pass follows the rate at the zone's key, without bend,
+  sweep or LFO. In the game, the filter changes whenever a bend, sweep or LFO moves the rate across
+  1 or 4/3. A SoundFont preset whose filter changes during notes has no such low-pass. citrusf2
+  reports the notes of such a preset above a rate of 1. In the SFZ files, a track that uses both the
+  low-pass and the biquad has no filter left for it. Notes there that start with the biquad on get
+  no resampling low-pass. Output limiting differs too. Region requests for linear or no
+  interpolation are reported. The SFZ files follow them, and SoundFont synths use their usual
+  interpolation.
 - **Voice limits.** The game has 24 voices and drops notes when they run out. Synths usually have
   more. By default, citrusf2 keeps every note. `--voices N` drops notes as the game does. With
   `--voices`, if a track starts over 24 notes in one tick, citrusf2 keeps the first 24. The game
@@ -602,7 +618,7 @@ low-pass's resonance. Player differences remain:
 - **Attenuation.** FluidSynth, BASSMIDI and the E-mu chips apply 0.4 of a zone's initial
   attenuation. The specification calls for all of it. citrusf2 therefore writes 2.5 times a
   zone's attenuation in the generator, up to the generator's limit of 1440 cB. Those players
-  play that limit as 57.6 dB. A modulator without a source holds any attenuation beyond
+  play that limit as 57.6 dB. A modulator without a source contains any attenuation beyond
   57.6 dB. FluidSynth 2.4.5 and later apply that modulator. BASSMIDI and earlier versions of
   FluidSynth ignore it. A player that follows the specification plays every attenuated zone too
   quietly. TinySoundFont plays a quarter of the attenuation. Before 27 January 2025,
@@ -643,8 +659,8 @@ tests on Windows.
 - **macOS:** install Xcode command line tools (`xcode-select --install`) and CMake
   (`brew install cmake` or the installer from cmake.org).
 
-citrusf2 builds on three libraries: seqlib, xsflib and ntdlib. The repository holds them as Git
-submodules in `externals/`. Clone it with its submodules:
+citrusf2 builds on three libraries: seqlib, xsflib and ntdlib. The repository contains them as
+Git submodules in `externals/`. Clone it with its submodules:
 
 ```sh
 git clone --recursive <repository URL>
@@ -673,11 +689,11 @@ C++ formatting uses clang-format with the repository's `.clang-format`.
 
 ## Tests and tools
 
-`ctest` runs the checks that need no game data: `citrusf2 --version` and the range of `--var`.
-The unit tests of the conversion are in seqlib and ntdlib. ntdlib runs its converter tests with
-citrusf2's settings on synthetic 3DS sound archives. They cover the archive and wave readers,
-the sequence player's timing, loops, legatos and limits, the envelope, pitch and filter models,
-and the MIDI, SoundFont and SFZ files.
+`ctest` runs the checks that require no game data: `citrusf2 --version`, the range of `--var` and a
+unit test of the game profiles. The unit tests of the conversion are in seqlib and ntdlib. ntdlib
+runs its converter tests with citrusf2's settings on synthetic 3DS sound archives. They cover the
+archive and wave readers, the sequence player's timing, loops, legatos and limits, the envelope,
+pitch and filter models, and the MIDI, SoundFont and SFZ files.
 
 Other checks and tools:
 

@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: MIT
 
-# Builds citrusf2 whenever main changes: on Windows x64 with clang-cl, and on macOS ARM64. The Windows job runs ctest
-# too. The macOS job builds without the tests (BUILD_TESTING=OFF). Changes to documentation alone don't start a run.
+# Builds citrusf2 whenever main changes, or when started by hand: on Windows x64 with clang-cl, and on macOS ARM64.
+# The Windows job runs ctest too. The macOS job builds without the tests (BUILD_TESTING=OFF). Changes to documentation
+# alone don't start a run.
 name: CI
 
 on:
   push:
     branches: [main]
     paths-ignore: ["**.md", "docs/**", "LICENSE"]
+  workflow_dispatch:
 
 permissions:
   contents: read

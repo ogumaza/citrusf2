@@ -4,7 +4,8 @@
 //
 //     citrusf2 [options] <archive.bcsar> [<archive.bcsar> ...]
 //
-// Output goes beside each archive. Windows accepts files dropped on the executable; macOS uses Citrusf2.app.
+// Output goes in a folder beside each archive. On Windows, archives can be dropped on the executable. On macOS, they go
+// on Citrusf2.app.
 
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +14,6 @@
 #include <optional>
 #include <string>
 #include <system_error>
-#include <utility>
 #include <vector>
 
 #include "ntdlib/ctr/snd/starting_tracks.h"
@@ -48,7 +48,7 @@ struct CurrentArchive
     std::vector<ntdlib::SoundPiece> pieces;
 };
 
-// Whether a group file (.bcgrp) lies beside the archive at `input`. Some games keep sequences in group files outside
+// Whether a group file (.bcgrp) is beside the archive at `input`. Some games keep sequences in group files outside
 // the archive. Mighty Gunvolt Burst keeps all of them there.
 bool HasGroupFilesBeside(const std::filesystem::path& input)
 {
@@ -66,21 +66,22 @@ bool HasGroupFilesBeside(const std::filesystem::path& input)
     return false;
 }
 
-// Reads the sound archive at `input`, named `name`, with `settings`, and the group files beside it. Sets `current` to
-// what it finds. Returns nothing if the file can't be read. The frame then reports the failure. Another build of an
-// archive with a profile gets a note.
+// Reads the sound archive at `input`, named `name`, with `settings`, and the group files beside it
+// (frame::OpenArchive). Sets `current` to what it finds. Returns nothing if the file can't be read. The frame then
+// reports the failure. Another build of an archive with a profile gets a note.
 std::optional<SoundArchive> ReadArchive(const std::filesystem::path& input, const std::string& name,
                                         const frame::Settings& settings, CurrentArchive& current)
 {
     current = {};
-    std::optional<std::vector<uint8_t>> bytes = frame::ReadFile(input);
-    if (!bytes)
+    std::optional<SoundArchive> archive =
+        frame::OpenArchive<SoundArchive>(input, name, settings, HasGroupFilesBeside(input));
+    if (!archive)
     {
         return std::nullopt;
     }
 
-    current.sha1 = xsflib::Sha1::Hex(xsflib::Sha1::Of(*bytes));
-    if (const char* game = citrusf2::OtherBuildOf(current.sha1, *bytes))
+    current.sha1 = xsflib::Sha1::Hex(xsflib::Sha1::Of(archive->Bytes()));
+    if (const char* game = citrusf2::OtherBuildOf(current.sha1, archive->Bytes()))
     {
         std::fprintf(stderr,
                      "note: %s looks like the sound archive of %s, but not the build that citrusf2 knows. A sequence "
@@ -88,15 +89,16 @@ std::optional<SoundArchive> ReadArchive(const std::filesystem::path& input, cons
                      name.c_str(), game);
     }
 
-    SoundArchive archive = frame::LoadArchive<SoundArchive>(std::move(*bytes), name, settings);
-    if (HasGroupFilesBeside(input))
-    {
-        frame::AddGroupFiles(archive, input, name);
-    }
-
-    current.pieces = ntdlib::FindSoundPieces(archive, ntdlib::kMightyGunvoltBurstChannels);
+    current.pieces = ntdlib::FindSoundPieces(*archive, ntdlib::kMightyGunvoltBurstChannels);
 
     return archive;
+}
+
+// The item ID in bank slot 0 of the sound `info`, or 0xFFFFFFFF for none. Some games give a sound other banks by that
+// bank (citrusf2::ArrangementsOf).
+uint32_t FirstBank(const ntdlib::sar::SoundInfo& info)
+{
+    return info.banks.empty() ? ntdlib::sar::kNoItem : info.banks.front();
 }
 
 // The other states that the game sets for each sound of `archive` as it plays (citrusf2::ArrangementsOf).
@@ -106,8 +108,7 @@ frame::ArrangementsOf ArrangementsOf(const CurrentArchive& current, const SoundA
     {
         const ntdlib::sar::SoundInfo& info = archive.Sounds()[sound];
         std::vector<frame::Arrangement> arrangements;
-        for (const SequenceArrangement& arrangement :
-             citrusf2::ArrangementsOf(sha1, info.name, info.banks.empty() ? ntdlib::sar::kNoItem : info.banks.front()))
+        for (const SequenceArrangement& arrangement : citrusf2::ArrangementsOf(sha1, info.name, FirstBank(info)))
         {
             arrangements.push_back({std::string(arrangement.suffix), [arrangement](frame::PerformOptions& options)
                                     { citrusf2::SetUpArrangement(arrangement, options); }});
@@ -117,14 +118,35 @@ frame::ArrangementsOf ArrangementsOf(const CurrentArchive& current, const SoundA
     };
 }
 
+// The effect that the game runs on the aux buses while it plays `at` (SequenceStart::game_effect): the effect of the
+// arrangement's start, or of the sound's start in ntdlib's list.
+uint8_t GameEffectOf(const CurrentArchive& current, const SoundArchive& archive, const frame::ArrangedSound& at)
+{
+    const ntdlib::sar::SoundInfo& info = archive.Sounds()[at.sound];
+    if (at.arrangement)
+    {
+        return citrusf2::ArrangementsOf(current.sha1, info.name, FirstBank(info)).at(*at.arrangement).start.game_effect;
+    }
+
+    return ntdlib::ctr::snd::StartingSequenceTracks(current.sha1, info.name).game_effect;
+}
+
 // Converts entry `index` of the frame's list of `archive` with `perform` and `settings`, as the game starts it. A sound
 // uses the start in ntdlib's list (StartingSequenceTracks). An arrangement uses the start that the arrangement sets. An
-// arrangement of the first sequence of a piece plays that sequence alone.
+// arrangement of the first sequence of a piece plays that sequence alone. For a game known to put a reverb on bus A,
+// citrusf2::ReverbOnBusA decides whether the sound's send A goes out as CC91 or CC91 stays at 0. --reverb decides for
+// the other games.
 frame::Conversion ConvertEntry(const CurrentArchive& current, const SoundArchive& archive, std::size_t index,
                                const frame::PerformOptions& perform, frame::Settings settings,
                                const std::string& program)
 {
     const frame::ArrangedSound at = frame::ArrangedSoundAt(index, archive.Sounds().size());
+    if (const std::optional<bool> reverb =
+            citrusf2::ReverbOnBusA(current.sha1, archive.Sounds()[at.sound].name, GameEffectOf(current, archive, at)))
+    {
+        settings.sends = *reverb ? frame::Sends::kReverb : frame::Sends::kNone;
+    }
+
     frame::PerformOptions options = perform;
     if (at.arrangement)
     {
@@ -134,13 +156,9 @@ frame::Conversion ConvertEntry(const CurrentArchive& current, const SoundArchive
     {
         citrusf2::SetUpStart(ntdlib::ctr::snd::StartingSequenceTracks(current.sha1, archive.Sounds()[at.sound].name),
                              options, settings);
-        if (const ntdlib::SoundPiece* piece = ntdlib::PieceStartingAt(current.pieces, at.sound))
-        {
-            return frame::ConvertTogether(archive, piece->sounds, piece->name, options, settings, program);
-        }
     }
 
-    return frame::ConvertSequence(archive, static_cast<uint32_t>(at.sound), options, settings, program);
+    return frame::ConvertSoundOrPiece(archive, at, current.pieces, options, settings, program);
 }
 
 // Fills in `converter`: the help, the 3DS settings and the --reverb option.
@@ -154,19 +172,20 @@ void SetUpConverter(frame::ArchiveConverter<SoundArchive>& converter)
     converter.extension = ".bcsar";
     converter.settings = frame::CtrSettings();
 
-    // A game's code puts the effects on the aux buses. Some games put a reverb on bus A. --reverb writes send A as
-    // CC91, the synth's reverb send. The search for the main loop leaves CC91 out. The loops then stay those of a
-    // conversion without --reverb.
+    // A game's code puts the effects on the aux buses. Some games put a reverb on bus A. For the games known to do so,
+    // citrusf2 writes send A as CC91, the synth's reverb send (ConvertEntry). --reverb does the same for the games
+    // whose effects citrusf2 has no profile of. The search for the main loop leaves CC91 out. The loops then stay those
+    // of a conversion with CC91 at 0.
+    converter.settings.reverb_moves_loops = false;
     converter.extra_options =
-        "  --reverb       write effect send A as CC91 (reverb), for games that put a\n"
-        "                 reverb on bus A\n";
+        "  --reverb       write effect send A as CC91 (reverb), for a game that puts a\n"
+        "                 reverb on bus A and that citrusf2 has no profile of\n";
     converter.option =
         [&converter](const std::string& option, frame::OptionReader& reader, frame::PerformOptions& perform)
     {
         if (option == "--reverb")
         {
             converter.settings.sends = frame::Sends::kReverb;
-            converter.settings.reverb_moves_loops = false;
             return true;
         }
 

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -18,17 +19,18 @@
 namespace citrusf2
 {
 
-// The game of a profile whose sound archive `archive` is another build of, or nullptr. Such an archive holds a sound
-// that only the profile's archive holds, but its SHA-1, `archive_sha1`, differs, and it gets no profile. Only
-// StreetPass Mii Plaza, Ultimate Angler and Flower Town are checked. The archive of the Plaza's system title gets a
-// note too. Its profile covers only some sounds.
+// The game whose archive with a profile the sound archive `archive` is another build of, or nullptr. Such an archive
+// contains a sound that only the archive with the profile contains. Its SHA-1, `archive_sha1`, differs, and it
+// therefore gets no profile. Only StreetPass Mii Plaza, Ultimate Angler and Flower Town are checked. The archive of
+// the Plaza's system title gets a note too. Its profile covers only some sounds.
 const char* OtherBuildOf(std::string_view archive_sha1, std::span<const uint8_t> archive);
 
 // Sets up `perform` and `settings` as a game starts a sequence with `start`: the tracks that sound and their volumes,
 // the variables that the game sets as the sound starts or plays, the random generator's state, the tempo ratio, the
-// pitch, the volume, the banks and the sends on buses A and B. A start that gives the generator's state at the
-// sequence's first tick takes no steps of the generator before the sound starts (Settings::random_steps_before_start).
-// The conversion has no model of the game's effect on the buses (SequenceStart::game_effect).
+// pitch, the volume, the low-pass, the banks and the sends on buses A and B. A start that gives the generator's state
+// at the sequence's first tick takes no steps of the generator before the sound starts
+// (Settings::random_steps_before_start). The conversion has no model of the game's effect on the buses
+// (SequenceStart::game_effect).
 void SetUpStart(const ntdlib::ctr::snd::SequenceStart& start, ntdlib::sequence_export::PerformOptions& perform,
                 ntdlib::sequence_export::Settings& settings);
 
@@ -43,8 +45,15 @@ void SetUpArrangement(const ntdlib::ctr::snd::SequenceArrangement& arrangement,
 // state, after the sound itself. The file's name is the sound's name followed by the state's suffix. `first_bank` is
 // the item ID in the sound's bank slot 0, or 0xFFFFFFFF for none. Some games give a sound other banks by that bank. A
 // state that differs from the sound's start only in the sends and the effect on the buses stays out. The conversion
-// has no model of the game's effects, and it writes the sends only with --reverb.
+// has no model of the game's effects.
 std::vector<ntdlib::ctr::snd::SequenceArrangement> ArrangementsOf(std::string_view archive_sha1, std::string_view sound,
                                                                   uint32_t first_bank);
+
+// Whether the game puts a reverb on aux bus A while it plays the sound named `sound` of the sound archive whose SHA-1
+// is `archive_sha1`, with the effect `game_effect` (SequenceStart::game_effect). citrusf2 then writes the sound's send
+// A as CC91, the synth's reverb send, and otherwise CC91 at 0. ntdlib's table of the games' effects
+// (ntdlib/ctr/snd/game_effects.h) gives the answer. Nothing for an archive that the table doesn't list, or whose game
+// puts a reverb on bus A in none of its effects. --reverb decides for those.
+std::optional<bool> ReverbOnBusA(std::string_view archive_sha1, std::string_view sound, uint8_t game_effect);
 
 } // namespace citrusf2

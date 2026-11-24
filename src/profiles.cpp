@@ -4,13 +4,16 @@
 
 #include "profiles.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
 
+#include "ntdlib/ctr/snd/game_effects.h"
 #include "ntdlib/ctr/snd/starting_tracks.h"
 #include "ntdlib/sequence_export/performance.h"
 #include "ntdlib/sequence_export/settings.h"
@@ -21,7 +24,11 @@ namespace citrusf2
 namespace
 {
 
+using ntdlib::ctr::snd::ArchiveEffects;
+using ntdlib::ctr::snd::AuxEffect;
+using ntdlib::ctr::snd::AuxEffectLists;
 using ntdlib::ctr::snd::SequenceArrangement;
+using ntdlib::ctr::snd::SequenceEffect;
 using ntdlib::ctr::snd::SequenceStart;
 using ntdlib::ctr::snd::SequenceVariable;
 
@@ -35,12 +42,34 @@ bool DiffersOnlyInEffects(const SequenceStart& state, const SequenceStart& start
     return state != start && state == with_effects;
 }
 
+// Whether the effects `buses` put a reverb on aux bus A.
+bool HasReverbOnBusA(const AuxEffectLists& buses)
+{
+    return std::ranges::any_of(buses[0], &AuxEffect::IsReverb);
+}
+
+// Whether the game of the archive whose SHA-1 is `archive_sha1` puts a reverb on aux bus A in some set of its effects,
+// in ntdlib's table of the games' effects: the archive's effects, the effects of some sequences alone, or a game's
+// effects in the table by program ID.
+bool GamePutsReverbOnBusA(std::string_view archive_sha1)
+{
+    if (const ArchiveEffects* effects = ntdlib::ctr::snd::FindArchiveEffects(archive_sha1))
+    {
+        return HasReverbOnBusA(effects->buses) ||
+               std::ranges::any_of(effects->game_effects, HasReverbOnBusA, &SequenceEffect::buses);
+    }
+
+    const AuxEffectLists* buses =
+        ntdlib::ctr::snd::EffectsWhilePlaying(archive_sha1, {}, SequenceStart::kArchiveEffects);
+    return buses && HasReverbOnBusA(*buses);
+}
+
 } // namespace
 
 const char* OtherBuildOf(std::string_view archive_sha1, std::span<const uint8_t> archive)
 {
-    // A sound that only each archive holds, as a name of the archive's string table, between two zero bytes, and the
-    // SHA-1 of the archive with the profile.
+    // Each build: a sound that only its archive contains, as a name in the archive's string table between two zero
+    // bytes, the SHA-1 of the archive with the profile, and the game.
     struct Build
     {
         std::string_view label;
@@ -99,6 +128,7 @@ void SetUpStart(const SequenceStart& start, ntdlib::sequence_export::PerformOpti
     perform.tempo_ratio = start.tempo_ratio;
     perform.pitch = start.pitch;
     perform.volume = start.volume;
+    perform.lpf = start.lpf;
     perform.banks = start.banks;
     perform.fx_sends[0] = start.fx_send[0];
     perform.fx_sends[1] = start.fx_send[1];
@@ -138,6 +168,16 @@ std::vector<SequenceArrangement> ArrangementsOf(std::string_view archive_sha1, s
     }
 
     return arrangements;
+}
+
+std::optional<bool> ReverbOnBusA(std::string_view archive_sha1, std::string_view sound, uint8_t game_effect)
+{
+    if (!GamePutsReverbOnBusA(archive_sha1))
+    {
+        return std::nullopt;
+    }
+
+    return HasReverbOnBusA(*ntdlib::ctr::snd::EffectsWhilePlaying(archive_sha1, sound, game_effect));
 }
 
 } // namespace citrusf2
